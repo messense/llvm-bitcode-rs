@@ -1,6 +1,6 @@
 [package]
 name = "llvm-bitcode"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["messense <messense@icloud.com>"]
 description = "LLVM Bitcode parser in Rust"
 edition = "2018"
