@@ -1,0 +1,14 @@
+[package]
+name = "llvm-bitcode"
+version = "0.1.0"
+authors = ["messense <messense@icloud.com>"]
+description = "LLVM Bitcode parser in Rust"
+edition = "2018"
+keywords = ["llvm", "bitcode"]
+readme = "README.md"
+license = "MIT"
+repository = "https://github.com/messense/llvm-bitcode-rs.git"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
