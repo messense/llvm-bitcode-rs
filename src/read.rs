@@ -5,6 +5,7 @@ use crate::bits::{self, Bits, Cursor};
 use crate::bitstream::{Abbreviation, Operand};
 use crate::visitor::BitStreamVisitor;
 
+/// Bitstream reader errors
 #[derive(Debug, Clone)]
 pub enum Error {
     InvalidAbbrev,
@@ -51,16 +52,20 @@ impl From<bits::Error> for Error {
     }
 }
 
+/// Bitstream reader
 #[derive(Debug, Clone)]
 pub struct BitStreamReader<'a> {
     cursor: Cursor<'a>,
+    /// Block information
     pub(crate) block_info: HashMap<u64, BlockInfo>,
     global_abbrevs: HashMap<u64, Vec<Abbreviation>>,
 }
 
 impl<'a> BitStreamReader<'a> {
+    /// Top level fake block ID
     pub const TOP_LEVEL_BLOCK_ID: u64 = u64::MAX;
 
+    /// Create a new reader from bytes
     pub fn new(buffer: &'a [u8]) -> Self {
         let cursor = Cursor::new(Bits::new(buffer));
         Self {
@@ -70,12 +75,14 @@ impl<'a> BitStreamReader<'a> {
         }
     }
 
+    /// Read signature, aka. Magic Number
     pub fn read_signature(&mut self) -> Result<Signature, Error> {
         assert!(self.cursor.is_at_start());
         let bits = self.cursor.read(mem::size_of::<u32>() * 8)? as u32;
         Ok(Signature::new(bits))
     }
 
+    /// Read abbreviated operand
     pub fn read_abbrev_op(&mut self) -> Result<Operand, Error> {
         let is_literal = self.cursor.read(1)?;
         if is_literal == 1 {
@@ -93,6 +100,7 @@ impl<'a> BitStreamReader<'a> {
         Ok(op)
     }
 
+    /// Read abbreviation
     pub fn read_abbrev(&mut self, num_ops: usize) -> Result<Abbreviation, Error> {
         if num_ops == 0 {
             return Err(Error::InvalidAbbrev);
@@ -138,6 +146,7 @@ impl<'a> BitStreamReader<'a> {
         }
     }
 
+    /// Read abbreviated data record
     pub fn read_abbreviated_record(&mut self, abbrev: &Abbreviation) -> Result<Record, Error> {
         let code =
             self.read_single_abbreviated_record_operand(&abbrev.operands.first().unwrap())?;
@@ -185,6 +194,7 @@ impl<'a> BitStreamReader<'a> {
         })
     }
 
+    /// Read block info block
     pub fn read_block_info_block(&mut self, abbrev_width: usize) -> Result<(), Error> {
         let mut current_block_id = None;
         loop {
@@ -281,6 +291,7 @@ impl<'a> BitStreamReader<'a> {
         }
     }
 
+    /// Read block with visitor
     pub fn read_block<V: BitStreamVisitor>(
         &mut self,
         id: u64,

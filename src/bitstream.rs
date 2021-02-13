@@ -3,9 +3,11 @@
 /// a bitstream file.
 #[derive(Debug, Clone)]
 pub struct Abbreviation {
+    /// Abbreviation operands
     pub operands: Vec<Operand>,
 }
 
+/// Abbreviation operand
 #[derive(Debug, Clone)]
 pub enum Operand {
     /// A literal value (emitted as a VBR8 field)

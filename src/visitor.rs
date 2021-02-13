@@ -14,11 +14,11 @@ pub trait BitStreamVisitor {
     fn visit(&mut self, record: Record);
 }
 
+/// A basic visitor that collects all the blocks and records in a stream.
 pub struct CollectingVisitor {
     stack: Vec<(u64, Vec<BitcodeElement>)>,
 }
 
-/// A basic visitor that collects all the blocks and records in a stream.
 impl CollectingVisitor {
     pub fn new() -> Self {
         Self {

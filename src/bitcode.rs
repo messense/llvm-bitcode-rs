@@ -15,9 +15,17 @@ pub struct Bitcode {
     pub block_info: HashMap<u64, BlockInfo>,
 }
 
+/// Blocks in a bitstream denote nested regions of the stream,
+/// and are identified by a content-specific id number
+///
+/// Block IDs 0-7 are reserved for [standard blocks](https://llvm.org/docs/BitCodeFormat.html#standard-blocks)
+/// whose meaning is defined by Bitcode;
+/// block IDs 8 and greater are application specific.
 #[derive(Debug, Clone)]
 pub struct Block {
+    /// Block ID
     pub id: u64,
+    /// Block elements
     pub elements: Vec<BitcodeElement>,
 }
 
@@ -28,24 +36,35 @@ pub enum Payload {
     Blob(Vec<u8>),
 }
 
+/// Data records consist of a record code and a number of (up to) 64-bit integer values
+///
+/// The interpretation of the code and values is application specific and may vary between different block types.
 #[derive(Debug, Clone)]
 pub struct Record {
+    /// Record code
     pub id: u64,
+    /// An abbreviated record has a abbreviation id followed by a set of fields
     pub fields: Vec<u64>,
+    /// Array and Blob encoding has payload
     pub payload: Option<Payload>,
 }
 
+/// Bitcode element
 #[derive(Debug, Clone)]
 pub enum BitcodeElement {
+    /// Block
     Block(Block),
+    /// Data record
     Record(Record),
 }
 
 impl BitcodeElement {
+    /// Returns true if it is a `Block`
     pub fn is_block(&self) -> bool {
         matches!(self, BitcodeElement::Block(_))
     }
 
+    /// If it is a `Block`, returns the associated block. Returns `None` otherwise.
     pub fn as_block(&self) -> Option<&Block> {
         match self {
             BitcodeElement::Block(block) => Some(block),
@@ -53,11 +72,29 @@ impl BitcodeElement {
         }
     }
 
+    /// If it is a `Block`, returns the associated mutable block. Returns `None` otherwise.
+    pub fn as_block_mut(&mut self) -> Option<&mut Block> {
+        match self {
+            BitcodeElement::Block(block) => Some(block),
+            BitcodeElement::Record(_) => None,
+        }
+    }
+
+    /// Returns true if it is a `Record`
     pub fn is_record(&self) -> bool {
         matches!(self, BitcodeElement::Record(_))
     }
 
+    /// If it is a `Record`, returns the associated record. Returns `None` otherwise.
     pub fn as_record(&self) -> Option<&Record> {
+        match self {
+            BitcodeElement::Block(_) => None,
+            BitcodeElement::Record(record) => Some(record),
+        }
+    }
+
+    /// If it is a `Record`, returns the associated mutable record. Returns `None` otherwise.
+    pub fn as_record_mut(&mut self) -> Option<&mut Record> {
         match self {
             BitcodeElement::Block(_) => None,
             BitcodeElement::Record(record) => Some(record),
@@ -65,9 +102,12 @@ impl BitcodeElement {
     }
 }
 
+/// Block information
 #[derive(Debug, Clone, Default)]
 pub struct BlockInfo {
+    /// Block name
     pub name: String,
+    /// Data record names
     pub record_names: HashMap<u64, String>,
 }
 
@@ -102,6 +142,9 @@ impl Bitcode {
         }
     }
 
+    /// Parse bitcode from bytes
+    ///
+    /// Accepts both LLVM bitcode and bitcode wrapper formats
     pub fn new(data: &[u8]) -> Result<Self, Error> {
         let (signature, stream) = Self::clean(data);
         let mut reader = BitStreamReader::new(stream);
@@ -114,6 +157,9 @@ impl Bitcode {
         })
     }
 
+    /// Read bitcode from bytes with a visitor
+    ///
+    /// Accepts both LLVM bitcode and bitcode wrapper formats
     pub fn read<V>(data: &[u8], visitor: &mut V) -> Result<(), Error>
     where
         V: BitStreamVisitor,
