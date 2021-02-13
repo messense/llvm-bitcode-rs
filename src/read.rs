@@ -1,8 +1,8 @@
-use std::{collections::HashMap, error, fmt, mem};
+use std::{collections::HashMap, convert::TryFrom, error, fmt, mem};
 
 use crate::bitcode::{BlockInfo, Payload, Record, Signature};
 use crate::bits::{self, Bits, Cursor};
-use crate::bitstream::{Abbreviation, Operand};
+use crate::bitstream::{Abbreviation, BlockInfoCode, BuiltinAbbreviationId, Operand};
 use crate::visitor::BitStreamVisitor;
 
 /// Bitstream reader errors
@@ -200,20 +200,23 @@ impl<'a> BitStreamReader<'a> {
 
     /// Read block info block
     pub fn read_block_info_block(&mut self, abbrev_width: usize) -> Result<(), Error> {
+        use BuiltinAbbreviationId::*;
+
         let mut current_block_id = None;
         loop {
-            match self.cursor.read(abbrev_width)? {
-                0 => {
-                    // END_BLOCK
+            let abbrev_id = self.cursor.read(abbrev_width)?;
+            match BuiltinAbbreviationId::try_from(abbrev_id).map_err(|_| Error::NoSuchAbbrev {
+                block_id: 0,
+                abbrev_id: abbrev_id as usize,
+            })? {
+                EndBlock => {
                     self.cursor.advance(32)?;
                     return Ok(());
                 }
-                1 => {
-                    // ENTER_SUB_BLOCK
+                EnterSubBlock => {
                     return Err(Error::NestedBlockInBlockInfo);
                 }
-                2 => {
-                    // DEFINE_ABBREVIATION
+                DefineAbbreviation => {
                     if let Some(block_id) = current_block_id {
                         let num_ops = self.cursor.read_vbr(5)? as usize;
                         let abbrev = self.read_abbrev(num_ops)?;
@@ -226,24 +229,25 @@ impl<'a> BitStreamReader<'a> {
                         return Err(Error::MissingSetBid);
                     }
                 }
-                3 => {
-                    // UNABBREVIATED_RECORD
+                UnabbreviatedRecord => {
                     let code = self.cursor.read_vbr(6)?;
                     let num_ops = self.cursor.read_vbr(6)? as usize;
                     let mut operands = Vec::with_capacity(num_ops);
                     for _ in 0..num_ops {
                         operands.push(self.cursor.read_vbr(6)?);
                     }
-                    match code {
-                        1 => {
-                            // Set Bid
+                    match BlockInfoCode::try_from(
+                        u8::try_from(code).map_err(|_| Error::InvalidBlockInfoRecord(code))?,
+                    )
+                    .map_err(|_| Error::InvalidBlockInfoRecord(code))?
+                    {
+                        BlockInfoCode::SetBid => {
                             if operands.len() != 1 {
                                 return Err(Error::InvalidBlockInfoRecord(code));
                             }
                             current_block_id = operands.first().cloned();
                         }
-                        2 => {
-                            // Set Block name
+                        BlockInfoCode::BlockName => {
                             if let Some(block_id) = current_block_id {
                                 let block_info = self
                                     .block_info
@@ -258,8 +262,7 @@ impl<'a> BitStreamReader<'a> {
                                 return Err(Error::MissingSetBid);
                             }
                         }
-                        3 => {
-                            // Set Record name
+                        BlockInfoCode::SetRecordName => {
                             if let Some(block_id) = current_block_id {
                                 if let Some(record_id) = operands.first().cloned() {
                                     let block_info = self
@@ -282,14 +285,7 @@ impl<'a> BitStreamReader<'a> {
                                 return Err(Error::MissingSetBid);
                             }
                         }
-                        _ => return Err(Error::InvalidBlockInfoRecord(code)),
                     }
-                }
-                id @ _ => {
-                    return Err(Error::NoSuchAbbrev {
-                        block_id: 0,
-                        abbrev_id: id as usize,
-                    })
                 }
             }
         }
@@ -302,54 +298,55 @@ impl<'a> BitStreamReader<'a> {
         abbrev_width: usize,
         visitor: &mut V,
     ) -> Result<(), Error> {
+        use BuiltinAbbreviationId::*;
+
         while !self.cursor.is_at_end() {
-            let abbr_id = self.cursor.read(abbrev_width)?;
-            match abbr_id {
-                0 => {
-                    // END_BLOCK
-                    self.cursor.advance(32)?;
-                    visitor.did_exit_block();
-                    return Ok(());
-                }
-                1 => {
-                    // ENTER_SUB_BLOCK
-                    let block_id = self.cursor.read_vbr(8)?;
-                    let new_abbrev_width = self.cursor.read_vbr(4)? as usize;
-                    self.cursor.advance(32)?;
-                    let block_length = self.cursor.read(32)? as usize * 4;
-                    match block_id {
-                        0 => self.read_block_info_block(new_abbrev_width)?,
-                        _ => {
-                            if !visitor.should_enter_block(block_id) {
-                                self.cursor.skip_bytes(block_length)?;
-                                break;
+            let abbrev_id = self.cursor.read(abbrev_width)?;
+            match BuiltinAbbreviationId::try_from(abbrev_id) {
+                Ok(abbrev_id) => match abbrev_id {
+                    EndBlock => {
+                        self.cursor.advance(32)?;
+                        visitor.did_exit_block();
+                        return Ok(());
+                    }
+                    EnterSubBlock => {
+                        let block_id = self.cursor.read_vbr(8)?;
+                        let new_abbrev_width = self.cursor.read_vbr(4)? as usize;
+                        self.cursor.advance(32)?;
+                        let block_length = self.cursor.read(32)? as usize * 4;
+                        match block_id {
+                            0 => self.read_block_info_block(new_abbrev_width)?,
+                            _ => {
+                                if !visitor.should_enter_block(block_id) {
+                                    self.cursor.skip_bytes(block_length)?;
+                                    break;
+                                }
+                                self.read_block(block_id, new_abbrev_width, visitor)?;
                             }
-                            self.read_block(block_id, new_abbrev_width, visitor)?;
                         }
                     }
-                }
-                2 => {
-                    // DEFINE_ABBREVIATION
-                    let num_ops = self.cursor.read_vbr(5)? as usize;
-                    let abbrev = self.read_abbrev(num_ops)?;
-                    let abbrev_info = self.global_abbrevs.entry(id).or_insert_with(|| Vec::new());
-                    abbrev_info.push(abbrev);
-                }
-                3 => {
-                    // UNABBREVIATED_RECORD
-                    let code = self.cursor.read_vbr(6)?;
-                    let num_ops = self.cursor.read_vbr(6)? as usize;
-                    let mut operands = Vec::with_capacity(num_ops);
-                    for _ in 0..num_ops {
-                        operands.push(self.cursor.read_vbr(6)?);
+                    DefineAbbreviation => {
+                        let num_ops = self.cursor.read_vbr(5)? as usize;
+                        let abbrev = self.read_abbrev(num_ops)?;
+                        let abbrev_info =
+                            self.global_abbrevs.entry(id).or_insert_with(|| Vec::new());
+                        abbrev_info.push(abbrev);
                     }
-                    visitor.visit(Record {
-                        id: code,
-                        fields: operands,
-                        payload: None,
-                    });
-                }
-                abbrev_id @ _ => {
+                    UnabbreviatedRecord => {
+                        let code = self.cursor.read_vbr(6)?;
+                        let num_ops = self.cursor.read_vbr(6)? as usize;
+                        let mut operands = Vec::with_capacity(num_ops);
+                        for _ in 0..num_ops {
+                            operands.push(self.cursor.read_vbr(6)?);
+                        }
+                        visitor.visit(Record {
+                            id: code,
+                            fields: operands,
+                            payload: None,
+                        });
+                    }
+                },
+                Err(_) => {
                     if let Some(abbrev_info) = self.global_abbrevs.get(&id).cloned() {
                         let abbrev_id = abbrev_id as usize;
                         if abbrev_id - 4 < abbrev_info.len() {

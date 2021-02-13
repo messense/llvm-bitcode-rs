@@ -1,3 +1,5 @@
+use num_enum::TryFromPrimitive;
+
 /// An `Abbreviation` represents the encoding definition for a user-defined
 /// record. An `Abbreviation` is the primary form of compression available in
 /// a bitstream file.
@@ -75,8 +77,8 @@ impl Operand {
 /// a name is given to a block or record with `BlockName` or
 /// `SetRecordName`, debugging tools like `llvm-bcanalyzer` can be used to
 /// introspect the structure of blocks and records in the bitstream file.
+#[derive(Debug, Clone, Copy, TryFromPrimitive)]
 #[repr(u8)]
-#[derive(Debug, Clone, Copy)]
 pub enum BlockInfoCode {
     /// Indicates which block ID is being described.
     SetBid = 1,
@@ -88,43 +90,19 @@ pub enum BlockInfoCode {
     SetRecordName = 3,
 }
 
-/// A `BlockId` is a fixed-width field that occurs at the start of all blocks.
-///
-/// Bitstream reserves the first 7 block IDs for its own bookkeeping.
-#[derive(Debug, Clone, Copy, Ord, PartialOrd, Eq, PartialEq)]
-pub struct BlockId(u8);
-
-impl BlockId {
-    pub const BLOCK_INFO: Self = Self(0);
-    pub const FIRST_APPLICATION_ID: Self = Self(8);
-
-    #[inline]
-    pub fn id(&self) -> u8 {
-        self.0
-    }
-}
-
-/// An `AbbreviationId` is a fixed-width field that occurs at the start of
+/// An abbreviation id is a fixed-width field that occurs at the start of
 /// abbreviated data records and inside block definitions.
 ///
 /// Bitstream reserves 4 special abbreviation IDs for its own bookkeeping.
-#[derive(Debug, Clone, Copy, Ord, PartialOrd, Eq, PartialEq)]
-pub struct AbbreviationId(u64);
-
-impl AbbreviationId {
+#[derive(Debug, Clone, Copy, TryFromPrimitive)]
+#[repr(u64)]
+pub enum BuiltinAbbreviationId {
     /// Marks the end of the current block.
-    pub const END_BLOCK: Self = Self(0);
+    EndBlock = 0,
     /// Marks the beginning of a new block.
-    pub const ENTER_SUB_BLOCK: Self = Self(1);
+    EnterSubBlock = 1,
     /// Marks the definition of a new abbreviation.
-    pub const DEFINE_ABBREVIATION: Self = Self(2);
+    DefineAbbreviation = 2,
     /// Marks the definition of a new unabbreviated record.
-    pub const UNABBREVIATED_RECORD: Self = Self(3);
-    /// The first application-defined abbreviation ID.
-    pub const FIRST_APPLICATION_ID: Self = Self(4);
-
-    #[inline]
-    pub fn id(&self) -> u64 {
-        self.0
-    }
+    UnabbreviatedRecord = 3,
 }
