@@ -5,6 +5,8 @@ pub mod bitcode;
 mod bits;
 /// Bitstream definitions
 pub mod bitstream;
+/// LLVM IR
+pub mod ir;
 /// Bitstream reader
 pub mod read;
 /// Bitstream visitor
