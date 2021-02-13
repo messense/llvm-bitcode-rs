@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use crate::bits::Bits;
-use crate::bitstream::{BitStreamVisitor, CollectingVisitor};
 use crate::read::{BitStreamReader, Error};
+use crate::visitor::{BitStreamVisitor, CollectingVisitor};
 
 const LLVM_BITCODE_WRAPPER_MAGIC: u32 = 0x0B17C0DE;
 

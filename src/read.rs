@@ -2,7 +2,8 @@ use std::{collections::HashMap, error, fmt, mem};
 
 use crate::bitcode::{BlockInfo, Payload, Record, Signature};
 use crate::bits::{self, Bits, Cursor};
-use crate::bitstream::{Abbreviation, BitStreamVisitor, Operand};
+use crate::bitstream::{Abbreviation, Operand};
+use crate::visitor::BitStreamVisitor;
 
 #[derive(Debug, Clone)]
 pub enum Error {
