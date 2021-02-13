@@ -112,7 +112,7 @@ pub struct BlockInfo {
 }
 
 /// aka. Magic number
-#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Ord, PartialOrd, Eq, PartialEq)]
 pub struct Signature(u32);
 
 impl Signature {
@@ -165,7 +165,9 @@ impl Bitcode {
         V: BitStreamVisitor,
     {
         let (signature, stream) = Self::clean(data);
-        visitor.validate(signature);
+        if !visitor.validate(signature) {
+            return Err(Error::InvalidSignature(signature.into_inner()));
+        }
         let mut reader = BitStreamReader::new(stream);
         reader.read_block(BitStreamReader::TOP_LEVEL_BLOCK_ID, 2, visitor)
     }

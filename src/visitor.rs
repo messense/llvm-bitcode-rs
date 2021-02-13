@@ -4,7 +4,9 @@ use crate::BitStreamReader;
 /// A visitor which receives callbacks while reading a bitstream.
 pub trait BitStreamVisitor {
     /// Validate a bitstream's signature or "magic number".
-    fn validate(&self, _signature: Signature) {}
+    fn validate(&self, _signature: Signature) -> bool {
+        true
+    }
     /// Called when a new block is encountered. Return `true` to enter the block
     /// and read its contents, or `false` to skip it.
     fn should_enter_block(&mut self, id: u64) -> bool;

@@ -8,6 +8,7 @@ use crate::visitor::BitStreamVisitor;
 /// Bitstream reader errors
 #[derive(Debug, Clone)]
 pub enum Error {
+    InvalidSignature(u32),
     InvalidAbbrev,
     NestedBlockInBlockInfo,
     MissingSetBid,
@@ -21,6 +22,9 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Error::InvalidSignature(sig) => {
+                write!(f, "invalid signature (magic number): 0x{:x}", sig)
+            }
             Error::InvalidAbbrev => write!(f, "invalid abbreviation"),
             Error::NestedBlockInBlockInfo => write!(f, "nested block in block info"),
             Error::MissingSetBid => write!(f, "missing SETBID"),
