@@ -1,0 +1,9 @@
+image: openbsd/latest
+packages:
+  - rust
+sources:
+  - https://github.com/messense/llvm-bitcode-rs
+tasks:
+  - test: |
+      cd llvm-bitcode-rs
+      cargo test
