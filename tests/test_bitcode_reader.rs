@@ -75,7 +75,7 @@ fn test_bitstream_reader() {
     Bitcode::read(&data, &mut visitor).unwrap();
     assert_eq!(
         visitor.0,
-        &[
+        vec![
             "entering block: 8",
             "Record (id: 1, fields: [1], payload: none",
             "exiting block",
