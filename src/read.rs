@@ -167,11 +167,7 @@ impl<'a> BitStreamReader<'a> {
                         elements.push(self.read_single_abbreviated_record_operand(element)?);
                     }
                     if matches!(**element, Operand::Char6) {
-                        let s: String = elements
-                            .into_iter()
-                            .map(|x| std::char::from_u32(x as u32).unwrap())
-                            .collect();
-                        Some(Payload::Char6String(s))
+                        Some(Payload::Char6String(string_from_u64s(&elements)))
                     } else {
                         Some(Payload::Array(elements))
                     }
@@ -230,11 +226,11 @@ impl<'a> BitStreamReader<'a> {
                     for _ in 0..num_ops {
                         operands.push(self.cursor.read_vbr(6)?);
                     }
-                    match BlockInfoCode::try_from(
-                        u8::try_from(code).map_err(|_| Error::InvalidBlockInfoRecord(code))?,
-                    )
-                    .map_err(|_| Error::InvalidBlockInfoRecord(code))?
-                    {
+                    let block = u8::try_from(code)
+                        .ok()
+                        .and_then(|c| BlockInfoCode::try_from(c).ok())
+                        .ok_or(Error::InvalidBlockInfoRecord(code))?;
+                    match block {
                         BlockInfoCode::SetBid => {
                             if operands.len() != 1 {
                                 return Err(Error::InvalidBlockInfoRecord(code));
@@ -244,28 +240,17 @@ impl<'a> BitStreamReader<'a> {
                         BlockInfoCode::BlockName => {
                             if let Some(block_id) = current_block_id {
                                 let block_info = self.block_info.entry(block_id).or_default();
-                                let name = String::from_utf8(
-                                    operands.into_iter().map(|x| x as u8).collect::<Vec<u8>>(),
-                                )
-                                .unwrap_or_else(|_| "<invalid>".to_string());
-                                block_info.name = name;
+                                block_info.name = string_from_u64s(&operands);
                             } else {
                                 return Err(Error::MissingSetBid);
                             }
                         }
                         BlockInfoCode::SetRecordName => {
                             if let Some(block_id) = current_block_id {
-                                if let Some(record_id) = operands.first().copied() {
+                                if let Some((record_id, name)) = operands.split_first() {
                                     let block_info = self.block_info.entry(block_id).or_default();
-                                    let name = String::from_utf8(
-                                        operands
-                                            .into_iter()
-                                            .skip(1)
-                                            .map(|x| x as u8)
-                                            .collect::<Vec<u8>>(),
-                                    )
-                                    .unwrap_or_else(|_| "<invalid>".to_string());
-                                    block_info.record_names.insert(record_id, name);
+                                    let name = string_from_u64s(name);
+                                    block_info.record_names.insert(*record_id, name);
                                 } else {
                                     return Err(Error::InvalidBlockInfoRecord(code));
                                 }
@@ -351,4 +336,16 @@ impl<'a> BitStreamReader<'a> {
         }
         Ok(())
     }
+}
+
+fn string_from_u64s(slice: &[u64]) -> String {
+    slice
+        .iter()
+        .map(|&x| {
+            u32::try_from(x)
+                .ok()
+                .and_then(char::from_u32)
+                .unwrap_or('\u{fffd}')
+        })
+        .collect()
 }
