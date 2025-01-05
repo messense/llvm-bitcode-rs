@@ -22,12 +22,14 @@ pub struct CollectingVisitor {
 }
 
 impl CollectingVisitor {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             stack: vec![(BitStreamReader::TOP_LEVEL_BLOCK_ID, Vec::new())],
         }
     }
 
+    #[must_use]
     pub fn finalize_top_level_elements(mut self) -> Vec<BitcodeElement> {
         assert_eq!(self.stack.len(), 1);
         self.stack.pop().unwrap().1

@@ -45,7 +45,7 @@ fn test_bitstream_reader() {
 
     impl BitStreamVisitor for LoggingVisitor {
         fn should_enter_block(&mut self, id: u64) -> bool {
-            self.0.push(format!("entering block: {}", id));
+            self.0.push(format!("entering block: {id}"));
             true
         }
 
@@ -141,7 +141,7 @@ fn test_bitstream_reader() {
             "Record (id: 3, fields: [5, 34, 13, 0, 5, 34, 26, 0], payload: none",
             "exiting block"
         ]
-    )
+    );
 }
 
 #[test]

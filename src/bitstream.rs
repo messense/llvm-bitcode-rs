@@ -32,6 +32,7 @@ pub enum Operand {
 
 impl Operand {
     /// Whether this case is payload
+    #[must_use]
     pub fn is_payload(&self) -> bool {
         use Operand::*;
 
@@ -42,22 +43,26 @@ impl Operand {
     }
 
     /// Whether this case is the `literal` case
+    #[must_use]
     pub fn is_literal(&self) -> bool {
-        matches!(self, Operand::Literal(_))
+        matches!(self, Self::Literal(_))
     }
 
+    #[must_use]
     pub fn is_array(&self) -> bool {
-        matches!(self, Operand::Array(_))
+        matches!(self, Self::Array(_))
     }
 
+    #[must_use]
     pub fn is_blob(&self) -> bool {
-        matches!(self, Operand::Blob)
+        matches!(self, Self::Blob)
     }
 
-    /// The llvm::BitCodeAbbrevOp::Encoding value this
+    /// The `llvm::BitCodeAbbrevOp::Encoding` value this
     /// enum case represents.
     /// - note: Must match the encoding in
-    ///         http://llvm.org/docs/BitCodeFormat.html#define-abbrev-encoding
+    ///         <http://llvm.org/docs/BitCodeFormat.html#define-abbrev-encoding>
+    #[must_use]
     pub fn encoded_kind(&self) -> u8 {
         use Operand::*;
 
