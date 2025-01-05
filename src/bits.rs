@@ -18,66 +18,22 @@ impl fmt::Display for Error {
 impl error::Error for Error {}
 
 #[derive(Debug, Clone)]
-pub struct Bits<'a> {
-    buffer: &'a [u8],
-}
-
-impl<'a> Bits<'a> {
-    pub fn new(buffer: &'a [u8]) -> Self {
-        Self { buffer }
-    }
-
-    pub fn read_bits(&self, offset: usize, count: usize) -> u64 {
-        let upper_bound = offset.wrapping_add(count);
-        assert!(count <= 64);
-        assert!(upper_bound >= offset);
-        assert!(upper_bound <= self.buffer.len() << 3);
-        let top_byte_index = upper_bound >> 3;
-        let mut res = 0;
-        if upper_bound & 7 != 0 {
-            let mask = (1u8 << (upper_bound & 7) as u8).wrapping_sub(1);
-            res = u64::from(self.buffer[top_byte_index] & mask);
-        }
-        for i in ((offset >> 3)..(upper_bound >> 3)).rev() {
-            res <<= 8;
-            res |= u64::from(self.buffer[i]);
-        }
-        if offset & 7 != 0 {
-            res >>= offset as u64 & 7;
-        }
-        res
-    }
-
-    pub fn len(&self) -> usize {
-        self.buffer.len() << 3
-    }
-}
-
-#[derive(Debug, Clone)]
 pub struct Cursor<'a> {
-    buffer: Bits<'a>,
+    buffer: &'a [u8],
     offset: usize,
 }
 
 impl<'a> Cursor<'a> {
-    pub fn new(buffer: Bits<'a>) -> Self {
+    pub fn new(buffer: &'a [u8]) -> Self {
         Self { buffer, offset: 0 }
     }
 
-    pub fn is_at_start(&self) -> bool {
-        self.offset == 0
-    }
-
     pub fn is_at_end(&self) -> bool {
-        // TODO: verify this
-        self.offset == self.buffer.len()
+        self.offset >= (self.buffer.len() << 3)
     }
 
     pub fn peek(&self, count: usize) -> Result<u64, Error> {
-        if self.buffer.len() - self.offset < count {
-            return Err(Error::BufferOverflow);
-        }
-        Ok(self.buffer.read_bits(self.offset, count))
+        self.read_bits(count).ok_or(Error::BufferOverflow)
     }
 
     pub fn read(&mut self, count: usize) -> Result<u64, Error> {
@@ -86,12 +42,29 @@ impl<'a> Cursor<'a> {
         Ok(res)
     }
 
-    pub fn read_bytes(&mut self, count: usize) -> Result<&'a [u8], Error> {
+    fn read_bits(&self, count: usize) -> Option<u64> {
+        let upper_bound = self.offset + count;
+        let top_byte_index = upper_bound >> 3;
+        let mut res = 0;
+        if upper_bound & 7 != 0 {
+            let mask = (1u8 << (upper_bound & 7) as u8) - 1;
+            res = u64::from(*self.buffer.get(top_byte_index)? & mask);
+        }
+        for i in ((self.offset >> 3)..(upper_bound >> 3)).rev() {
+            res <<= 8;
+            res |= u64::from(*self.buffer.get(i)?);
+        }
+        if self.offset & 7 != 0 {
+            res >>= self.offset as u64 & 7;
+        }
+        Some(res)
+    }
+
+    pub fn read_bytes(&mut self, count: usize) -> Result<&[u8], Error> {
         assert_eq!(self.offset & 0b111, 0);
         let byte_start = self.offset >> 3;
         let byte_end = byte_start + count;
         let bytes = self
-            .buffer
             .buffer
             .get(byte_start..byte_end)
             .ok_or(Error::BufferOverflow)?;
@@ -101,26 +74,27 @@ impl<'a> Cursor<'a> {
 
     pub fn skip_bytes(&mut self, count: usize) -> Result<(), Error> {
         assert_eq!(self.offset & 0b111, 0);
-        let offset = self.offset.wrapping_add(count << 3);
-        assert!(offset >= self.offset);
-        if offset > self.buffer.len() {
+        let byte_end = (self.offset >> 3) + count;
+        if byte_end > self.buffer.len() {
             return Err(Error::BufferOverflow);
         }
-        self.offset = offset;
+        self.offset = byte_end << 3;
         Ok(())
     }
 
     pub fn read_vbr(&mut self, width: usize) -> Result<u64, Error> {
-        assert!(width > 1);
-        let test_bit = (1 << width.wrapping_sub(1)) as u64;
-        let mask = test_bit.wrapping_sub(1);
+        if width < 1 {
+            return Err(Error::VbrOverflow);
+        }
+        let test_bit = (1 << (width - 1)) as u64;
+        let mask = test_bit - 1;
         let mut res = 0;
         let mut offset = 0;
         let mut next;
         loop {
             next = self.read(width)?;
             res |= (next & mask) << offset;
-            offset += width.wrapping_sub(1);
+            offset += width - 1;
             if offset > 64 {
                 return Err(Error::VbrOverflow);
             }
@@ -132,13 +106,13 @@ impl<'a> Cursor<'a> {
     }
 
     pub fn advance(&mut self, align: usize) -> Result<(), Error> {
-        assert!(self.offset.wrapping_add(align.wrapping_sub(1)) >= self.offset);
-        assert_eq!(align & align.wrapping_sub(1), 0);
+        assert!(align > 0);
+        assert_eq!(align & (align - 1), 0);
         if self.offset % align == 0 {
             return Ok(());
         }
-        let offset = (self.offset.wrapping_add(align)) & !(align.wrapping_sub(1));
-        if offset > self.buffer.len() {
+        let offset = (self.offset + align) & !(align - 1);
+        if offset > (self.buffer.len() << 3) {
             return Err(Error::BufferOverflow);
         }
         self.offset = offset;

@@ -1,7 +1,7 @@
-use std::{collections::HashMap, convert::TryFrom, error, fmt, mem};
+use std::{collections::HashMap, convert::TryFrom, error, fmt};
 
-use crate::bitcode::{BlockInfo, Payload, Record, Signature};
-use crate::bits::{self, Bits, Cursor};
+use crate::bitcode::{BlockInfo, Payload, Record};
+use crate::bits::{self, Cursor};
 use crate::bitstream::{Abbreviation, BlockInfoCode, BuiltinAbbreviationId, Operand};
 use crate::visitor::BitStreamVisitor;
 
@@ -71,7 +71,7 @@ impl<'a> BitStreamReader<'a> {
     /// Create a new reader from bytes
     #[must_use]
     pub fn new(buffer: &'a [u8]) -> Self {
-        let cursor = Cursor::new(Bits::new(buffer));
+        let cursor = Cursor::new(buffer);
         Self {
             cursor,
             block_info: HashMap::new(),
@@ -79,15 +79,8 @@ impl<'a> BitStreamReader<'a> {
         }
     }
 
-    /// Read signature, aka. Magic Number
-    pub fn read_signature(&mut self) -> Result<Signature, Error> {
-        assert!(self.cursor.is_at_start());
-        let bits = self.cursor.read(mem::size_of::<u32>() * 8)? as u32;
-        Ok(Signature::new(bits))
-    }
-
     /// Read abbreviated operand
-    pub fn read_abbrev_op(&mut self) -> Result<Operand, Error> {
+    fn read_abbrev_op(&mut self) -> Result<Operand, Error> {
         let is_literal = self.cursor.read(1)?;
         if is_literal == 1 {
             return Ok(Operand::Literal(self.cursor.read_vbr(8)?));
@@ -288,7 +281,7 @@ impl<'a> BitStreamReader<'a> {
                         self.cursor.advance(32)?;
                         let block_length = self.cursor.read(32)? as usize * 4;
                         if block_id == 0 {
-                            self.read_block_info_block(new_abbrev_width)?
+                            self.read_block_info_block(new_abbrev_width)?;
                         } else {
                             if !visitor.should_enter_block(block_id) {
                                 self.cursor.skip_bytes(block_length)?;
