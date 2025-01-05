@@ -182,7 +182,7 @@ impl<'a> BitStreamReader<'a> {
                 Operand::Blob => {
                     let length = self.cursor.read_vbr(6)? as usize;
                     self.cursor.advance(32)?;
-                    let data = self.cursor.read_bytes(length)?;
+                    let data = self.cursor.read_bytes(length)?.to_vec();
                     self.cursor.advance(32)?;
                     Some(Payload::Blob(data))
                 }

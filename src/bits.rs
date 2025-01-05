@@ -93,22 +93,16 @@ impl<'a> Cursor<'a> {
         Ok(res)
     }
 
-    pub fn read_bytes(&mut self, count: usize) -> Result<Vec<u8>, Error> {
+    pub fn read_bytes(&mut self, count: usize) -> Result<&'a [u8], Error> {
         assert_eq!(self.offset & 0b111, 0);
-        let offset = self.offset.wrapping_add(count << 3);
-        assert!(offset >= self.offset);
-        if offset > self.buffer.len() {
-            return Err(Error::BufferOverflow);
-        }
-        let bytes: Vec<u8> = self
+        let byte_start = self.offset >> 3;
+        let byte_end = byte_start + count;
+        let bytes = self
             .buffer
             .buffer
-            .iter()
-            .skip(self.offset >> 3)
-            .take((offset - self.offset) >> 3)
-            .cloned()
-            .collect();
-        self.offset = offset;
+            .get(byte_start..byte_end)
+            .ok_or(Error::BufferOverflow)?;
+        self.offset = byte_end << 3;
         Ok(bytes)
     }
 
