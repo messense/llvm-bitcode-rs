@@ -319,7 +319,7 @@ impl<'a> BitStreamReader<'a> {
                             _ => {
                                 if !visitor.should_enter_block(block_id) {
                                     self.cursor.skip_bytes(block_length)?;
-                                    break;
+                                    continue;
                                 }
                                 self.read_block(block_id, new_abbrev_width, visitor)?;
                             }

@@ -143,3 +143,23 @@ fn test_bitstream_reader() {
         ]
     )
 }
+
+#[test]
+fn test_block_skip() {
+    struct No15(usize);
+
+    impl BitStreamVisitor for No15 {
+        fn should_enter_block(&mut self, id: u64) -> bool {
+            id != 15
+        }
+        fn did_exit_block(&mut self) {}
+        fn visit(&mut self, _: Record) {
+            self.0 += 1;
+        }
+    }
+
+    let data = fs::read("tests/fixtures/llvm19.bc").unwrap();
+    let mut test = No15(0);
+    Bitcode::read(&data, &mut test).unwrap();
+    assert_eq!(179, test.0);
+}
