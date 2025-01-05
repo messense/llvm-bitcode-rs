@@ -82,6 +82,19 @@ impl<'a> Cursor<'a> {
         Ok(())
     }
 
+    /// Create a cursor for `length_bytes`, and skip over `length_bytes`
+    pub(crate) fn take_slice(&mut self, length_bytes: usize) -> Result<Cursor<'_>, Error> {
+        assert_eq!(self.offset & 0b111, 0);
+        let byte_start = self.offset >> 3;
+        let byte_end = byte_start + length_bytes;
+        let buffer = self
+            .buffer
+            .get(byte_start..byte_end)
+            .ok_or(Error::BufferOverflow)?;
+        self.offset = byte_end << 3;
+        Ok(Cursor { buffer, offset: 0 })
+    }
+
     pub fn read_vbr(&mut self, width: usize) -> Result<u64, Error> {
         if width < 1 {
             return Err(Error::VbrOverflow);

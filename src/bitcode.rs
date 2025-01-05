@@ -1,3 +1,4 @@
+use crate::bits::Cursor;
 use std::collections::HashMap;
 
 use crate::read::{BitStreamReader, Error};
@@ -155,9 +156,14 @@ impl Bitcode {
     /// Accepts both LLVM bitcode and bitcode wrapper formats
     pub fn new(data: &[u8]) -> Result<Self, Error> {
         let (signature, stream) = Self::clean(data).ok_or(Error::InvalidSignature(0))?;
-        let mut reader = BitStreamReader::new(stream);
+        let mut reader = BitStreamReader::new();
         let mut visitor = CollectingVisitor::new();
-        reader.read_block(BitStreamReader::TOP_LEVEL_BLOCK_ID, 2, &mut visitor)?;
+        reader.read_block(
+            &mut Cursor::new(stream),
+            BitStreamReader::TOP_LEVEL_BLOCK_ID,
+            2,
+            &mut visitor,
+        )?;
         Ok(Self {
             signature,
             elements: visitor.finalize_top_level_elements(),
@@ -176,7 +182,12 @@ impl Bitcode {
         if !visitor.validate(signature) {
             return Err(Error::InvalidSignature(signature.into_inner()));
         }
-        let mut reader = BitStreamReader::new(stream);
-        reader.read_block(BitStreamReader::TOP_LEVEL_BLOCK_ID, 2, visitor)
+        let mut reader = BitStreamReader::new();
+        reader.read_block(
+            &mut Cursor::new(stream),
+            BitStreamReader::TOP_LEVEL_BLOCK_ID,
+            2,
+            visitor,
+        )
     }
 }
