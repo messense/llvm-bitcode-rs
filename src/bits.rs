@@ -20,25 +20,18 @@ impl error::Error for Error {}
 #[derive(Debug, Clone)]
 pub struct Bits<'a> {
     buffer: &'a [u8],
-    start_index: usize,
-    end_index: usize,
 }
 
 impl<'a> Bits<'a> {
     pub fn new(buffer: &'a [u8]) -> Self {
-        let end_index = buffer.len() * 8;
-        Self {
-            buffer,
-            start_index: 0,
-            end_index,
-        }
+        Self { buffer }
     }
 
     pub fn read_bits(&self, offset: usize, count: usize) -> u64 {
         let upper_bound = offset.wrapping_add(count);
         assert!(count <= 64);
         assert!(upper_bound >= offset);
-        assert!(upper_bound <= self.end_index);
+        assert!(upper_bound <= self.buffer.len() << 3);
         let top_byte_index = upper_bound >> 3;
         let mut res = 0;
         if upper_bound & 7 != 0 {
@@ -56,7 +49,7 @@ impl<'a> Bits<'a> {
     }
 
     pub fn len(&self) -> usize {
-        self.end_index
+        self.buffer.len() << 3
     }
 }
 
@@ -72,7 +65,7 @@ impl<'a> Cursor<'a> {
     }
 
     pub fn is_at_start(&self) -> bool {
-        self.offset == self.buffer.start_index
+        self.offset == 0
     }
 
     pub fn is_at_end(&self) -> bool {
