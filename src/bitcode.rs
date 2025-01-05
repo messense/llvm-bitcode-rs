@@ -131,20 +131,22 @@ impl Signature {
 }
 
 impl Bitcode {
-    fn clean(data: &[u8]) -> (Signature, &[u8]) {
-        let (signature, remaining_data) = data.split_first_chunk::<4>().unwrap();
+    fn clean(data: &[u8]) -> Option<(Signature, &[u8])> {
+        let (signature, remaining_data) = data.split_first_chunk::<4>()?;
         let signature = u32::from_le_bytes(*signature);
         if signature != LLVM_BITCODE_WRAPPER_MAGIC {
-            (Signature(signature), remaining_data)
+            Some((Signature(signature), remaining_data))
         } else {
             // It is a LLVM Bitcode wrapper, remove wrapper header
-            assert!(data.len() > 20);
+            if data.len() < 20 {
+                return None;
+            }
             let offset = u32::from_le_bytes(data[8..12].try_into().unwrap()) as usize;
             let size = u32::from_le_bytes(data[12..16].try_into().unwrap()) as usize;
-            let data = &data[offset..offset + size];
-            let (signature, remaining_data) = data.split_first_chunk::<4>().unwrap();
+            let data = data.get(offset..offset + size)?;
+            let (signature, remaining_data) = data.split_first_chunk::<4>()?;
             let signature = u32::from_le_bytes(*signature);
-            (Signature(signature), remaining_data)
+            Some((Signature(signature), remaining_data))
         }
     }
 
@@ -152,7 +154,7 @@ impl Bitcode {
     ///
     /// Accepts both LLVM bitcode and bitcode wrapper formats
     pub fn new(data: &[u8]) -> Result<Self, Error> {
-        let (signature, stream) = Self::clean(data);
+        let (signature, stream) = Self::clean(data).ok_or(Error::InvalidSignature(0))?;
         let mut reader = BitStreamReader::new(stream);
         let mut visitor = CollectingVisitor::new();
         reader.read_block(BitStreamReader::TOP_LEVEL_BLOCK_ID, 2, &mut visitor)?;
@@ -170,7 +172,7 @@ impl Bitcode {
     where
         V: BitStreamVisitor,
     {
-        let (signature, stream) = Self::clean(data);
+        let (signature, stream) = Self::clean(data).ok_or(Error::InvalidSignature(0))?;
         if !visitor.validate(signature) {
             return Err(Error::InvalidSignature(signature.into_inner()));
         }
