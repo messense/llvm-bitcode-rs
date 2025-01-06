@@ -1,6 +1,6 @@
+use crate::bits::Cursor;
 use std::collections::HashMap;
 
-use crate::bits::Bits;
 use crate::read::{BitStreamReader, Error};
 use crate::visitor::{BitStreamVisitor, CollectingVisitor};
 
@@ -132,19 +132,22 @@ impl Signature {
 }
 
 impl Bitcode {
-    fn clean(data: &[u8]) -> (Signature, &[u8]) {
-        assert!(data.len() > 4);
-        let signature = Bits::new(data).read_bits(0, 32) as u32;
-        if signature == LLVM_BITCODE_WRAPPER_MAGIC {
-            // It is a LLVM Bitcode wrapper, remove wrapper header
-            assert!(data.len() > 20);
-            let offset = u32::from_le_bytes([data[8], data[9], data[10], data[11]]) as usize;
-            let size = u32::from_le_bytes([data[12], data[13], data[14], data[15]]) as usize;
-            let data = &data[offset..offset + size];
-            let signature = Bits::new(data).read_bits(0, 32) as u32;
-            (Signature(signature), &data[4..])
+    fn clean(data: &[u8]) -> Option<(Signature, &[u8])> {
+        let (signature, remaining_data) = data.split_first_chunk::<4>()?;
+        let signature = u32::from_le_bytes(*signature);
+        if signature != LLVM_BITCODE_WRAPPER_MAGIC {
+            Some((Signature(signature), remaining_data))
         } else {
-            (Signature(signature), &data[4..])
+            // It is a LLVM Bitcode wrapper, remove wrapper header
+            if data.len() < 20 {
+                return None;
+            }
+            let offset = u32::from_le_bytes(data[8..12].try_into().unwrap()) as usize;
+            let size = u32::from_le_bytes(data[12..16].try_into().unwrap()) as usize;
+            let data = data.get(offset..offset + size)?;
+            let (signature, remaining_data) = data.split_first_chunk::<4>()?;
+            let signature = u32::from_le_bytes(*signature);
+            Some((Signature(signature), remaining_data))
         }
     }
 
@@ -152,10 +155,15 @@ impl Bitcode {
     ///
     /// Accepts both LLVM bitcode and bitcode wrapper formats
     pub fn new(data: &[u8]) -> Result<Self, Error> {
-        let (signature, stream) = Self::clean(data);
-        let mut reader = BitStreamReader::new(stream);
+        let (signature, stream) = Self::clean(data).ok_or(Error::InvalidSignature(0))?;
+        let mut reader = BitStreamReader::new();
         let mut visitor = CollectingVisitor::new();
-        reader.read_block(BitStreamReader::TOP_LEVEL_BLOCK_ID, 2, &mut visitor)?;
+        reader.read_block(
+            &mut Cursor::new(stream),
+            BitStreamReader::TOP_LEVEL_BLOCK_ID,
+            2,
+            &mut visitor,
+        )?;
         Ok(Self {
             signature,
             elements: visitor.finalize_top_level_elements(),
@@ -170,11 +178,16 @@ impl Bitcode {
     where
         V: BitStreamVisitor,
     {
-        let (signature, stream) = Self::clean(data);
+        let (signature, stream) = Self::clean(data).ok_or(Error::InvalidSignature(0))?;
         if !visitor.validate(signature) {
             return Err(Error::InvalidSignature(signature.into_inner()));
         }
-        let mut reader = BitStreamReader::new(stream);
-        reader.read_block(BitStreamReader::TOP_LEVEL_BLOCK_ID, 2, visitor)
+        let mut reader = BitStreamReader::new();
+        reader.read_block(
+            &mut Cursor::new(stream),
+            BitStreamReader::TOP_LEVEL_BLOCK_ID,
+            2,
+            visitor,
+        )
     }
 }
