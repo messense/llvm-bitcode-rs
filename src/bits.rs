@@ -8,10 +8,10 @@ pub enum Error {
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Error::BufferOverflow => write!(f, "buffer overflow"),
-            Error::VbrOverflow => write!(f, "vbr overflow"),
-        }
+        f.write_str(match self {
+            Self::BufferOverflow => "buffer overflow",
+            Self::VbrOverflow => "vbr overflow",
+        })
     }
 }
 
@@ -20,25 +20,18 @@ impl error::Error for Error {}
 #[derive(Debug, Clone)]
 pub struct Bits<'a> {
     buffer: &'a [u8],
-    start_index: usize,
-    end_index: usize,
 }
 
 impl<'a> Bits<'a> {
     pub fn new(buffer: &'a [u8]) -> Self {
-        let end_index = buffer.len() * 8;
-        Self {
-            buffer,
-            start_index: 0,
-            end_index,
-        }
+        Self { buffer }
     }
 
     pub fn read_bits(&self, offset: usize, count: usize) -> u64 {
         let upper_bound = offset.wrapping_add(count);
         assert!(count <= 64);
         assert!(upper_bound >= offset);
-        assert!(upper_bound <= self.end_index);
+        assert!(upper_bound <= self.buffer.len() << 3);
         let top_byte_index = upper_bound >> 3;
         let mut res = 0;
         if upper_bound & 7 != 0 {
@@ -56,7 +49,7 @@ impl<'a> Bits<'a> {
     }
 
     pub fn len(&self) -> usize {
-        self.end_index
+        self.buffer.len() << 3
     }
 }
 
@@ -72,7 +65,7 @@ impl<'a> Cursor<'a> {
     }
 
     pub fn is_at_start(&self) -> bool {
-        self.offset == self.buffer.start_index
+        self.offset == 0
     }
 
     pub fn is_at_end(&self) -> bool {
@@ -93,22 +86,16 @@ impl<'a> Cursor<'a> {
         Ok(res)
     }
 
-    pub fn read_bytes(&mut self, count: usize) -> Result<Vec<u8>, Error> {
+    pub fn read_bytes(&mut self, count: usize) -> Result<&'a [u8], Error> {
         assert_eq!(self.offset & 0b111, 0);
-        let offset = self.offset.wrapping_add(count << 3);
-        assert!(offset >= self.offset);
-        if offset > self.buffer.len() {
-            return Err(Error::BufferOverflow);
-        }
-        let bytes: Vec<u8> = self
+        let byte_start = self.offset >> 3;
+        let byte_end = byte_start + count;
+        let bytes = self
             .buffer
             .buffer
-            .iter()
-            .skip(self.offset >> 3)
-            .take((offset - self.offset) >> 3)
-            .cloned()
-            .collect();
-        self.offset = offset;
+            .get(byte_start..byte_end)
+            .ok_or(Error::BufferOverflow)?;
+        self.offset = byte_end << 3;
         Ok(bytes)
     }
 

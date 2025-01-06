@@ -60,44 +60,48 @@ pub enum BitcodeElement {
 
 impl BitcodeElement {
     /// Returns true if it is a `Block`
+    #[must_use]
     pub fn is_block(&self) -> bool {
-        matches!(self, BitcodeElement::Block(_))
+        matches!(self, Self::Block(_))
     }
 
     /// If it is a `Block`, returns the associated block. Returns `None` otherwise.
+    #[must_use]
     pub fn as_block(&self) -> Option<&Block> {
         match self {
-            BitcodeElement::Block(block) => Some(block),
-            BitcodeElement::Record(_) => None,
+            Self::Block(block) => Some(block),
+            Self::Record(_) => None,
         }
     }
 
     /// If it is a `Block`, returns the associated mutable block. Returns `None` otherwise.
     pub fn as_block_mut(&mut self) -> Option<&mut Block> {
         match self {
-            BitcodeElement::Block(block) => Some(block),
-            BitcodeElement::Record(_) => None,
+            Self::Block(block) => Some(block),
+            Self::Record(_) => None,
         }
     }
 
     /// Returns true if it is a `Record`
+    #[must_use]
     pub fn is_record(&self) -> bool {
-        matches!(self, BitcodeElement::Record(_))
+        matches!(self, Self::Record(_))
     }
 
     /// If it is a `Record`, returns the associated record. Returns `None` otherwise.
+    #[must_use]
     pub fn as_record(&self) -> Option<&Record> {
         match self {
-            BitcodeElement::Block(_) => None,
-            BitcodeElement::Record(record) => Some(record),
+            Self::Block(_) => None,
+            Self::Record(record) => Some(record),
         }
     }
 
     /// If it is a `Record`, returns the associated mutable record. Returns `None` otherwise.
     pub fn as_record_mut(&mut self) -> Option<&mut Record> {
         match self {
-            BitcodeElement::Block(_) => None,
-            BitcodeElement::Record(record) => Some(record),
+            Self::Block(_) => None,
+            Self::Record(record) => Some(record),
         }
     }
 }
@@ -116,10 +120,12 @@ pub struct BlockInfo {
 pub struct Signature(u32);
 
 impl Signature {
+    #[must_use]
     pub fn new(val: u32) -> Self {
         Self(val)
     }
 
+    #[must_use]
     pub fn into_inner(self) -> u32 {
         self.0
     }
