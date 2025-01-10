@@ -275,7 +275,7 @@ impl BitStreamReader {
     pub fn read_block<V: BitStreamVisitor>(
         &mut self,
         cursor: &mut Cursor<'_>,
-        id: u64,
+        block_id: u64,
         abbrev_width: usize,
         visitor: &mut V,
     ) -> Result<(), Error> {
@@ -287,7 +287,7 @@ impl BitStreamReader {
                 match abbrev_id {
                     EndBlock => {
                         cursor.advance(32)?;
-                        visitor.did_exit_block();
+                        visitor.did_exit_block(block_id);
                         return Ok(());
                     }
                     EnterSubBlock => {
@@ -309,7 +309,7 @@ impl BitStreamReader {
                     DefineAbbreviation => {
                         let num_ops = cursor.read_vbr(5)? as usize;
                         let abbrev = self.read_abbrev(cursor, num_ops)?;
-                        let abbrev_info = self.global_abbrevs.entry(id).or_default();
+                        let abbrev_info = self.global_abbrevs.entry(block_id).or_default();
                         abbrev_info.push(abbrev);
                     }
                     UnabbreviatedRecord => {
@@ -319,31 +319,32 @@ impl BitStreamReader {
                         for _ in 0..num_ops {
                             operands.push(cursor.read_vbr(6)?);
                         }
-                        visitor.visit(Record {
-                            id: code,
-                            fields: operands,
-                            payload: None,
-                        });
+                        visitor.visit(
+                            block_id,
+                            Record {
+                                id: code,
+                                fields: operands,
+                                payload: None,
+                            },
+                        );
                     }
                 }
             } else {
-                if let Some(abbrev_info) = self.global_abbrevs.get(&id).cloned() {
+                if let Some(abbrev_info) = self.global_abbrevs.get(&block_id) {
                     let abbrev_id = abbrev_id as usize;
-                    if abbrev_id - 4 < abbrev_info.len() {
-                        visitor.visit(
-                            self.read_abbreviated_record(cursor, &abbrev_info[abbrev_id - 4])?,
-                        );
+                    if let Some(abbrev) = abbrev_info.get(abbrev_id - 4).cloned() {
+                        visitor.visit(block_id, self.read_abbreviated_record(cursor, &abbrev)?);
                         continue;
                     }
                 }
                 return Err(Error::NoSuchAbbrev {
-                    block_id: id,
+                    block_id,
                     abbrev_id: abbrev_id as usize,
                 });
             }
         }
-        if id != Self::TOP_LEVEL_BLOCK_ID {
-            return Err(Error::MissingEndBlock(id));
+        if block_id != Self::TOP_LEVEL_BLOCK_ID {
+            return Err(Error::MissingEndBlock(block_id));
         }
         Ok(())
     }

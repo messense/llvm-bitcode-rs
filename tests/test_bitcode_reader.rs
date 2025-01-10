@@ -49,11 +49,11 @@ fn test_bitstream_reader() {
             true
         }
 
-        fn did_exit_block(&mut self) {
-            self.0.push("exiting block".to_string());
+        fn did_exit_block(&mut self, id: u64) {
+            self.0.push(format!("exiting block: {id}"));
         }
 
-        fn visit(&mut self, record: Record) {
+        fn visit(&mut self, _block_id: u64, record: Record) {
             let payload = if let Some(payload) = &record.payload {
                 match payload {
                     Payload::Array(ele) => format!("array({} elements)", ele.len()),
@@ -78,68 +78,68 @@ fn test_bitstream_reader() {
         vec![
             "entering block: 8",
             "Record (id: 1, fields: [1], payload: none",
-            "exiting block",
+            "exiting block: 8",
             "entering block: 9",
             "Record (id: 6, fields: [1, 0, 0, 100], payload: blob(100 bytes)",
             "Record (id: 2, fields: [3, 1, 53, 28, 0, 0, 0, 34], payload: blob(34 bytes)",
-            "exiting block",
+            "exiting block: 9",
             "entering block: 9",
             "Record (id: 2, fields: [3, 1, 53, 28, 0, 0, 0, 59], payload: blob(59 bytes)",
-            "exiting block",
+            "exiting block: 9",
             "entering block: 9",
             "Record (id: 2, fields: [3, 1, 113, 1, 0, 0, 0, 38], payload: blob(38 bytes)",
-            "exiting block",
+            "exiting block: 9",
             "entering block: 9",
             "Record (id: 2, fields: [3, 1, 113, 1, 0, 0, 0, 20], payload: blob(20 bytes)",
-            "exiting block",
+            "exiting block: 9",
             "entering block: 9",
             "Record (id: 6, fields: [2, 0, 0, 98], payload: blob(98 bytes)",
             "Record (id: 2, fields: [3, 2, 21, 69, 0, 0, 0, 34], payload: blob(34 bytes)",
-            "exiting block",
+            "exiting block: 9",
             "entering block: 9",
             "Record (id: 2, fields: [3, 2, 21, 69, 0, 0, 0, 22], payload: blob(22 bytes)",
             "Record (id: 7, fields: [2, 21, 69, 0, 2, 21, 69, 0, 1], payload: blob(1 bytes)",
-            "exiting block",
+            "exiting block: 9",
             "entering block: 9",
             "Record (id: 2, fields: [3, 2, 21, 69, 0, 0, 0, 42], payload: blob(42 bytes)",
-            "exiting block",
+            "exiting block: 9",
             "entering block: 9",
             "Record (id: 2, fields: [3, 2, 21, 69, 0, 0, 0, 22], payload: blob(22 bytes)",
             "Record (id: 7, fields: [2, 21, 69, 0, 2, 21, 69, 0, 1], payload: blob(1 bytes)",
-            "exiting block",
+            "exiting block: 9",
             "entering block: 9",
             "Record (id: 6, fields: [3, 0, 0, 84], payload: blob(84 bytes)",
             "Record (id: 2, fields: [3, 3, 38, 28, 0, 0, 0, 34], payload: blob(34 bytes)",
-            "exiting block",
+            "exiting block: 9",
             "entering block: 9",
             "Record (id: 2, fields: [3, 3, 38, 28, 0, 0, 0, 59], payload: blob(59 bytes)",
-            "exiting block",
+            "exiting block: 9",
             "entering block: 9",
             "Record (id: 2, fields: [3, 3, 66, 1, 0, 0, 0, 38], payload: blob(38 bytes)",
-            "exiting block",
+            "exiting block: 9",
             "entering block: 9",
             "Record (id: 2, fields: [3, 3, 66, 1, 0, 0, 0, 20], payload: blob(20 bytes)",
-            "exiting block",
+            "exiting block: 9",
             "entering block: 9",
             "Record (id: 6, fields: [4, 0, 0, 93], payload: blob(93 bytes)",
             "Record (id: 2, fields: [3, 4, 15, 46, 0, 0, 0, 40], payload: blob(40 bytes)",
-            "exiting block",
+            "exiting block: 9",
             "entering block: 9",
             "Record (id: 2, fields: [3, 4, 15, 46, 0, 0, 0, 22], payload: blob(22 bytes)",
             "Record (id: 7, fields: [4, 15, 46, 0, 4, 15, 46, 0, 1], payload: blob(1 bytes)",
-            "exiting block",
+            "exiting block: 9",
             "entering block: 9",
             "Record (id: 2, fields: [3, 4, 15, 46, 0, 0, 0, 42], payload: blob(42 bytes)",
-            "exiting block",
+            "exiting block: 9",
             "entering block: 9",
             "Record (id: 2, fields: [3, 4, 15, 46, 0, 0, 0, 22], payload: blob(22 bytes)",
             "Record (id: 7, fields: [4, 15, 46, 0, 4, 15, 46, 0, 1], payload: blob(1 bytes)",
-            "exiting block",
+            "exiting block: 9",
             "entering block: 9",
             "Record (id: 6, fields: [5, 0, 0, 72], payload: blob(72 bytes)",
             "Record (id: 2, fields: [3, 5, 34, 13, 0, 0, 0, 44], payload: blob(44 bytes)",
             "Record (id: 3, fields: [5, 34, 13, 0, 5, 34, 26, 0], payload: none",
-            "exiting block"
+            "exiting block: 9",
         ]
     );
 }
@@ -152,8 +152,13 @@ fn test_block_skip() {
         fn should_enter_block(&mut self, id: u64) -> bool {
             id != 15
         }
-        fn did_exit_block(&mut self) {}
-        fn visit(&mut self, _: Record) {
+
+        fn did_exit_block(&mut self, id: u64) {
+            assert_ne!(15, id);
+        }
+
+        fn visit(&mut self, block_id: u64, _: Record) {
+            assert_ne!(15, block_id);
             self.0 += 1;
         }
     }
