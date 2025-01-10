@@ -121,6 +121,14 @@ impl BitStreamReader {
         Ok(Abbreviation { operands })
     }
 
+    fn define_abbrev(&mut self, cursor: &mut Cursor<'_>, block_id: u64) -> Result<(), Error> {
+        let num_ops = cursor.read_vbr(5)? as usize;
+        let abbrev = self.read_abbrev(cursor, num_ops)?;
+        let abbrevs = self.global_abbrevs.entry(block_id).or_default();
+        abbrevs.push(abbrev);
+        Ok(())
+    }
+
     fn read_single_abbreviated_record_operand(
         &mut self,
         cursor: &mut Cursor<'_>,
@@ -194,6 +202,21 @@ impl BitStreamReader {
         })
     }
 
+    fn read_record<'input>(cursor: &mut Cursor<'input>) -> Result<Record, Error> {
+        let code = cursor.read_vbr(6)?;
+        let num_ops = cursor.read_vbr(6)? as usize;
+        let mut operands = Vec::with_capacity(num_ops);
+        for _ in 0..num_ops {
+            operands.push(cursor.read_vbr(6)?);
+        }
+        let record = Record {
+            id: code,
+            fields: operands,
+            payload: None,
+        };
+        Ok(record)
+    }
+
     /// Read block info block
     pub fn read_block_info_block(
         &mut self,
@@ -217,53 +240,36 @@ impl BitStreamReader {
                     return Err(Error::NestedBlockInBlockInfo);
                 }
                 DefineAbbreviation => {
-                    if let Some(block_id) = current_block_id {
-                        let num_ops = cursor.read_vbr(5)? as usize;
-                        let abbrev = self.read_abbrev(cursor, num_ops)?;
-                        let abbrevs = self.global_abbrevs.entry(block_id).or_default();
-                        abbrevs.push(abbrev);
-                    } else {
-                        return Err(Error::MissingSetBid);
-                    }
+                    let block_id = current_block_id.ok_or(Error::MissingSetBid)?;
+                    self.define_abbrev(cursor, block_id)?;
                 }
                 UnabbreviatedRecord => {
-                    let code = cursor.read_vbr(6)?;
-                    let num_ops = cursor.read_vbr(6)? as usize;
-                    let mut operands = Vec::with_capacity(num_ops);
-                    for _ in 0..num_ops {
-                        operands.push(cursor.read_vbr(6)?);
-                    }
-                    let block = u8::try_from(code)
+                    let record = Self::read_record(cursor)?;
+                    let block = u8::try_from(record.id)
                         .ok()
                         .and_then(|c| BlockInfoCode::try_from(c).ok())
-                        .ok_or(Error::InvalidBlockInfoRecord(code))?;
+                        .ok_or(Error::InvalidBlockInfoRecord(record.id))?;
                     match block {
                         BlockInfoCode::SetBid => {
-                            if operands.len() != 1 {
-                                return Err(Error::InvalidBlockInfoRecord(code));
-                            }
-                            current_block_id = operands.first().copied();
+                            let [id] = record.fields[..] else {
+                                return Err(Error::InvalidBlockInfoRecord(record.id));
+                            };
+                            current_block_id = Some(id);
                         }
                         BlockInfoCode::BlockName => {
-                            if let Some(block_id) = current_block_id {
-                                let block_info = self.block_info.entry(block_id).or_default();
-                                block_info.name = string_from_u64s(&operands);
-                            } else {
-                                return Err(Error::MissingSetBid);
-                            }
+                            let block_id = current_block_id.ok_or(Error::MissingSetBid)?;
+                            let block_info = self.block_info.entry(block_id).or_default();
+                            block_info.name = string_from_u64s(&record.fields);
                         }
                         BlockInfoCode::SetRecordName => {
-                            if let Some(block_id) = current_block_id {
-                                if let Some((record_id, name)) = operands.split_first() {
-                                    let block_info = self.block_info.entry(block_id).or_default();
-                                    let name = string_from_u64s(name);
-                                    block_info.record_names.insert(*record_id, name);
-                                } else {
-                                    return Err(Error::InvalidBlockInfoRecord(code));
-                                }
-                            } else {
-                                return Err(Error::MissingSetBid);
-                            }
+                            let block_id = current_block_id.ok_or(Error::MissingSetBid)?;
+                            let (record_id, name) = record
+                                .fields
+                                .split_first()
+                                .ok_or(Error::InvalidBlockInfoRecord(record.id))?;
+                            let block_info = self.block_info.entry(block_id).or_default();
+                            let name = string_from_u64s(name);
+                            block_info.record_names.insert(*record_id, name);
                         }
                     }
                 }
@@ -307,26 +313,10 @@ impl BitStreamReader {
                         }
                     }
                     DefineAbbreviation => {
-                        let num_ops = cursor.read_vbr(5)? as usize;
-                        let abbrev = self.read_abbrev(cursor, num_ops)?;
-                        let abbrev_info = self.global_abbrevs.entry(block_id).or_default();
-                        abbrev_info.push(abbrev);
+                        self.define_abbrev(cursor, block_id)?;
                     }
                     UnabbreviatedRecord => {
-                        let code = cursor.read_vbr(6)?;
-                        let num_ops = cursor.read_vbr(6)? as usize;
-                        let mut operands = Vec::with_capacity(num_ops);
-                        for _ in 0..num_ops {
-                            operands.push(cursor.read_vbr(6)?);
-                        }
-                        visitor.visit(
-                            block_id,
-                            Record {
-                                id: code,
-                                fields: operands,
-                                payload: None,
-                            },
-                        );
+                        visitor.visit(block_id, Self::read_record(cursor)?);
                     }
                 }
             } else {
