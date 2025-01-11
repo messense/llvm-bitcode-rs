@@ -31,7 +31,7 @@ fn test_bitcode() {
         .as_record()
         .unwrap();
     let fields: Vec<u8> = target_triple_record
-        .fields
+        .fields()
         .iter()
         .map(|x| *x as u8)
         .collect();
@@ -53,8 +53,8 @@ fn test_bitstream_reader() {
             self.0.push(format!("exiting block: {id}"));
         }
 
-        fn visit(&mut self, _block_id: u64, record: Record) {
-            let payload = if let Some(payload) = &record.payload {
+        fn visit(&mut self, _block_id: u64, mut record: Record) {
+            let payload = if let Some(payload) = record.take_payload() {
                 match payload {
                     Payload::Array(ele) => format!("array({} elements)", ele.len()),
                     Payload::Blob(blob) => format!("blob({} bytes)", blob.len()),
@@ -63,9 +63,12 @@ fn test_bitstream_reader() {
             } else {
                 "none".to_string()
             };
+            let id = record.id;
             self.0.push(format!(
                 "Record (id: {}, fields: {:?}, payload: {}",
-                record.id, record.fields, payload
+                id,
+                record.fields(),
+                payload
             ));
         }
     }

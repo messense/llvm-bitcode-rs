@@ -1,4 +1,5 @@
 use crate::bits::Cursor;
+use crate::bitstream::{Abbreviation, Operand};
 use std::collections::HashMap;
 
 use crate::read::{BitStreamReader, Error};
@@ -44,9 +45,130 @@ pub struct Record {
     /// Record code
     pub id: u64,
     /// An abbreviated record has a abbreviation id followed by a set of fields
-    pub fields: Vec<u64>,
+    fields: Vec<u64>,
     /// Array and Blob encoding has payload
-    pub payload: Option<Payload>,
+    payload: Option<Payload>,
+}
+
+impl Record {
+    pub fn fields(&self) -> &[u64] {
+        &self.fields
+    }
+
+    pub fn take_payload(&mut self) -> Option<Payload> {
+        self.payload.take()
+    }
+
+    fn read_single_abbreviated_record_operand(
+        cursor: &mut Cursor<'_>,
+        operand: &Operand,
+    ) -> Result<u64, Error> {
+        match operand {
+            Operand::Char6 => {
+                let value = cursor.read(6)?;
+                match value {
+                    0..=25 => Ok(value + u64::from('a' as u32)),
+                    26..=51 => Ok(value + u64::from('A' as u32) - 26),
+                    52..=61 => Ok(value + u64::from('0' as u32) - 52),
+                    62 => Ok(u64::from('.' as u32)),
+                    63 => Ok(u64::from('_' as u32)),
+                    _ => Err(Error::InvalidAbbrev),
+                }
+            }
+            Operand::Literal(value) => Ok(*value),
+            Operand::Fixed(width) => Ok(cursor.read(*width as usize)?),
+            Operand::Vbr(width) => Ok(cursor.read_vbr(*width as usize)?),
+            Operand::Array(_) | Operand::Blob => Err(Error::InvalidAbbrev),
+        }
+    }
+
+    pub(crate) fn from_cursor_abbrev(
+        cursor: &mut Cursor<'_>,
+        abbrev: &Abbreviation,
+    ) -> Result<Record, Error> {
+        let code =
+            Self::read_single_abbreviated_record_operand(cursor, abbrev.operands.first().unwrap())?;
+        let last_operand = abbrev.operands.last().unwrap();
+        let last_regular_operand_index =
+            abbrev.operands.len() - (if last_operand.is_payload() { 1 } else { 0 });
+        let mut fields = Vec::new();
+        for op in &abbrev.operands[1..last_regular_operand_index] {
+            fields.push(Self::read_single_abbreviated_record_operand(cursor, op)?);
+        }
+        let payload = if last_operand.is_payload() {
+            match last_operand {
+                Operand::Array(element) => {
+                    let length = cursor.read_vbr(6)? as usize;
+                    if matches!(**element, Operand::Char6) {
+                        let mut s = String::with_capacity(length);
+                        for _ in 0..length {
+                            s.push(
+                                u32::try_from(Self::read_single_abbreviated_record_operand(
+                                    cursor, element,
+                                )?)
+                                .ok()
+                                .and_then(char::from_u32)
+                                .unwrap_or('\u{fffd}'),
+                            );
+                        }
+
+                        Some(Payload::Char6String(s))
+                    } else {
+                        let mut elements = Vec::with_capacity(length);
+                        for _ in 0..length {
+                            elements.push(Self::read_single_abbreviated_record_operand(
+                                cursor, element,
+                            )?);
+                        }
+                        Some(Payload::Array(elements))
+                    }
+                }
+                Operand::Blob => {
+                    let length = cursor.read_vbr(6)? as usize;
+                    cursor.advance(32)?;
+                    let data = cursor.read_bytes(length)?.to_vec();
+                    cursor.advance(32)?;
+                    Some(Payload::Blob(data))
+                }
+                _ => unreachable!(),
+            }
+        } else {
+            None
+        };
+        Ok(Self {
+            id: code,
+            fields,
+            payload,
+        })
+    }
+
+    pub(crate) fn from_cursor<'input>(cursor: &mut Cursor<'input>) -> Result<Record, Error> {
+        let code = cursor.read_vbr(6)?;
+        let num_ops = cursor.read_vbr(6)? as usize;
+        let mut operands = Vec::with_capacity(num_ops);
+        for _ in 0..num_ops {
+            operands.push(cursor.read_vbr(6)?);
+        }
+        let record = Record {
+            id: code,
+            fields: operands,
+            payload: None,
+        };
+        Ok(record)
+    }
+
+    pub fn string(&self, start_at: usize) -> String {
+        self.fields
+            .iter()
+            .skip(start_at)
+            .map(|&x| {
+                u32::try_from(x)
+                    .ok()
+                    .and_then(char::from_u32)
+                    .unwrap_or('\u{fffd}')
+            })
+            .collect()
+    }
 }
 
 /// Bitcode element
