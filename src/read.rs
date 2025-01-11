@@ -76,7 +76,7 @@ impl BitStreamReader {
     }
 
     /// Read abbreviated operand
-    fn read_abbrev_op(&mut self, cursor: &mut Cursor<'_>) -> Result<Operand, Error> {
+    fn read_abbrev_op(&self, cursor: &mut Cursor<'_>) -> Result<Operand, Error> {
         let is_literal = cursor.read(1)?;
         if is_literal == 1 {
             return Ok(Operand::Literal(cursor.read_vbr(8)?));
@@ -95,7 +95,7 @@ impl BitStreamReader {
 
     /// Read abbreviation
     pub fn read_abbrev(
-        &mut self,
+        &self,
         cursor: &mut Cursor<'_>,
         num_ops: usize,
     ) -> Result<Abbreviation, Error> {
@@ -130,7 +130,7 @@ impl BitStreamReader {
     }
 
     fn read_single_abbreviated_record_operand(
-        &mut self,
+        &self,
         cursor: &mut Cursor<'_>,
         operand: &Operand,
     ) -> Result<u64, Error> {
@@ -155,7 +155,7 @@ impl BitStreamReader {
 
     /// Read abbreviated data record
     pub fn read_abbreviated_record(
-        &mut self,
+        &self,
         cursor: &mut Cursor<'_>,
         abbrev: &Abbreviation,
     ) -> Result<Record, Error> {
@@ -322,8 +322,8 @@ impl BitStreamReader {
             } else {
                 if let Some(abbrev_info) = self.global_abbrevs.get(&block_id) {
                     let abbrev_id = abbrev_id as usize;
-                    if let Some(abbrev) = abbrev_info.get(abbrev_id - 4).cloned() {
-                        visitor.visit(block_id, self.read_abbreviated_record(cursor, &abbrev)?);
+                    if let Some(abbrev) = abbrev_info.get(abbrev_id - 4) {
+                        visitor.visit(block_id, self.read_abbreviated_record(cursor, abbrev)?);
                         continue;
                     }
                 }
