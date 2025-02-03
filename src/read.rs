@@ -76,53 +76,41 @@ impl BitStreamReader {
     }
 
     /// Read abbreviated operand
-    fn read_abbrev_op(cursor: &mut Cursor<'_>) -> Result<Operand, Error> {
+    fn read_abbrev_op(cursor: &mut Cursor<'_>, num_ops_left: &mut usize) -> Result<Operand, Error> {
+        if *num_ops_left == 0 {
+            return Err(Error::InvalidAbbrev);
+        }
+        *num_ops_left -= 1;
+
         let is_literal = cursor.read(1)?;
         if is_literal == 1 {
             return Ok(Operand::Literal(cursor.read_vbr(8)?));
         }
         let op_type = cursor.read(3)?;
-        let op = match op_type {
+        Ok(match op_type {
             1 => Operand::Fixed(cursor.read_vbr(5)? as u8),
             2 => Operand::Vbr(cursor.read_vbr(5)? as u8),
-            3 => Operand::Array(Box::new(Self::read_abbrev_op(cursor)?)),
+            3 if *num_ops_left == 1 => {
+                Operand::Array(Box::new(Self::read_abbrev_op(cursor, num_ops_left)?))
+            }
             4 => Operand::Char6,
-            5 => Operand::Blob,
+            5 if *num_ops_left == 0 => Operand::Blob,
             _ => return Err(Error::InvalidAbbrev),
-        };
-        Ok(op)
+        })
     }
 
     /// Read abbreviation
-    fn read_abbrev(cursor: &mut Cursor<'_>, num_ops: usize) -> Result<Abbreviation, Error> {
-        if num_ops == 0 {
-            return Err(Error::InvalidAbbrev);
-        }
-        let mut operands = Vec::new();
-        for i in 0..num_ops {
-            let op = Self::read_abbrev_op(cursor)?;
-            let is_array = op.is_array();
-            let is_blob = op.is_blob();
-            operands.push(op);
-            if is_array {
-                if i == num_ops - 2 {
-                    break;
-                } else {
-                    return Err(Error::InvalidAbbrev);
-                }
-            } else if is_blob && i != num_ops - 1 {
-                return Err(Error::InvalidAbbrev);
-            }
-        }
-        Ok(Abbreviation { operands })
-    }
-
     fn define_abbrev(
         cursor: &mut Cursor<'_>,
         abbrevs: &mut Vec<Abbreviation>,
     ) -> Result<(), Error> {
-        let num_ops = cursor.read_vbr(5)? as usize;
-        abbrevs.push(Self::read_abbrev(cursor, num_ops)?);
+        let mut num_ops = cursor.read_vbr(5)? as usize;
+
+        let mut operands = Vec::with_capacity(num_ops);
+        while num_ops > 0 && operands.len() != operands.capacity() {
+            operands.push(Self::read_abbrev_op(cursor, &mut num_ops)?);
+        }
+        abbrevs.push(Abbreviation { operands });
         Ok(())
     }
 
