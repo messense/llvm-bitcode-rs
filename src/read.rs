@@ -117,11 +117,12 @@ impl BitStreamReader {
         Ok(Abbreviation { operands })
     }
 
-    fn define_abbrev(&mut self, cursor: &mut Cursor<'_>, block_id: u64) -> Result<(), Error> {
+    fn define_abbrev(
+        cursor: &mut Cursor<'_>,
+        abbrevs: &mut Vec<Abbreviation>,
+    ) -> Result<(), Error> {
         let num_ops = cursor.read_vbr(5)? as usize;
-        let abbrev = Self::read_abbrev(cursor, num_ops)?;
-        let abbrevs = self.global_abbrevs.entry(block_id).or_default();
-        abbrevs.push(abbrev);
+        abbrevs.push(Self::read_abbrev(cursor, num_ops)?);
         Ok(())
     }
 
@@ -149,7 +150,7 @@ impl BitStreamReader {
                 }
                 DefineAbbreviation => {
                     let block_id = current_block_id.ok_or(Error::MissingSetBid)?;
-                    self.define_abbrev(cursor, block_id)?;
+                    Self::define_abbrev(cursor, self.global_abbrevs.entry(block_id).or_default())?;
                 }
                 UnabbreviatedRecord => {
                     let record = Record::from_cursor(cursor)?;
@@ -196,6 +197,7 @@ impl BitStreamReader {
         visitor: &mut V,
     ) -> Result<(), Error> {
         use BuiltinAbbreviationId::*;
+        let mut block_local_abbrevs = Vec::new();
 
         while !cursor.is_at_end() {
             let abbrev_id = cursor.read(abbrev_width)?;
@@ -223,24 +225,36 @@ impl BitStreamReader {
                         }
                     }
                     DefineAbbreviation => {
-                        self.define_abbrev(cursor, block_id)?;
+                        Self::define_abbrev(cursor, &mut block_local_abbrevs)?;
                     }
                     UnabbreviatedRecord => {
                         visitor.visit(block_id, Record::from_cursor(cursor)?);
                     }
                 }
             } else {
-                if let Some(abbrev_info) = self.global_abbrevs.get(&block_id) {
-                    let abbrev_id = abbrev_id as usize;
-                    if let Some(abbrev) = abbrev_info.get(abbrev_id - 4) {
-                        visitor.visit(block_id, Record::from_cursor_abbrev(cursor, abbrev)?);
-                        continue;
-                    }
-                }
-                return Err(Error::NoSuchAbbrev {
+                let abbrev_index = abbrev_id as usize - 4;
+                let global_abbrevs = self
+                    .global_abbrevs
+                    .get(&block_id)
+                    .map(|v| v.as_slice())
+                    .unwrap_or_default();
+
+                // > Any abbreviations defined in a BLOCKINFO record for the particular block type receive IDs first, in order,
+                // > followed by any abbreviations defined within the block itself.
+                let abbrev =
+                    if let Some(local_index) = abbrev_index.checked_sub(global_abbrevs.len()) {
+                        block_local_abbrevs.get(local_index)
+                    } else {
+                        global_abbrevs.get(abbrev_index)
+                    };
+
+                let abbrev = abbrev.ok_or(Error::NoSuchAbbrev {
                     block_id,
                     abbrev_id: abbrev_id as usize,
-                });
+                })?;
+
+                visitor.visit(block_id, Record::from_cursor_abbrev(cursor, abbrev)?);
+                continue;
             }
         }
         if block_id != Self::TOP_LEVEL_BLOCK_ID {
