@@ -7,13 +7,16 @@ pub trait BitStreamVisitor {
     fn validate(&self, _signature: Signature) -> bool {
         true
     }
+
     /// Called when a new block is encountered. Return `true` to enter the block
     /// and read its contents, or `false` to skip it.
-    fn should_enter_block(&mut self, id: u64) -> bool;
+    fn should_enter_block(&mut self, block_id: u64) -> bool;
+
     /// Called when a block is exited.
-    fn did_exit_block(&mut self);
+    fn did_exit_block(&mut self, block_id: u64);
+
     /// Called whenever a record is encountered.
-    fn visit(&mut self, record: Record);
+    fn visit(&mut self, block_id: u64, record: Record);
 }
 
 /// A basic visitor that collects all the blocks and records in a stream.
@@ -42,15 +45,16 @@ impl BitStreamVisitor for CollectingVisitor {
         true
     }
 
-    fn did_exit_block(&mut self) {
+    fn did_exit_block(&mut self, block_id: u64) {
         if let Some((id, elements)) = self.stack.pop() {
+            assert_eq!(id, block_id);
             let block = Block { id, elements };
             let last = self.stack.last_mut().unwrap();
             last.1.push(BitcodeElement::Block(block));
         }
     }
 
-    fn visit(&mut self, record: Record) {
+    fn visit(&mut self, _block_id: u64, record: Record) {
         let last = self.stack.last_mut().unwrap();
         last.1.push(BitcodeElement::Record(record));
     }
