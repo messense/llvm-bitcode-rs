@@ -120,7 +120,7 @@ impl BitStreamReader {
     pub fn read_block_info_block(
         &mut self,
         cursor: &mut Cursor<'_>,
-        abbrev_width: usize,
+        abbrev_width: u8,
     ) -> Result<(), Error> {
         use BuiltinAbbreviationId::*;
 
@@ -132,7 +132,7 @@ impl BitStreamReader {
                 abbrev_id: abbrev_id as usize,
             })? {
                 EndBlock => {
-                    cursor.advance(32)?;
+                    cursor.align32()?;
                     return Ok(());
                 }
                 EnterSubBlock => {
@@ -165,7 +165,7 @@ impl BitStreamReader {
                             let id = record.id;
                             let record_id = record
                                 .fields()
-                                .get(0)
+                                .first()
                                 .copied()
                                 .ok_or(Error::InvalidBlockInfoRecord(id))?;
                             let block_info = self.block_info.entry(block_id).or_default();
@@ -183,7 +183,7 @@ impl BitStreamReader {
         &mut self,
         cursor: &mut Cursor<'_>,
         block_id: u64,
-        abbrev_width: usize,
+        abbrev_width: u8,
         visitor: &mut V,
     ) -> Result<(), Error> {
         use BuiltinAbbreviationId::*;
@@ -194,14 +194,14 @@ impl BitStreamReader {
             if let Ok(abbrev_id) = BuiltinAbbreviationId::try_from(abbrev_id) {
                 match abbrev_id {
                     EndBlock => {
-                        cursor.advance(32)?;
+                        cursor.align32()?;
                         visitor.did_exit_block(block_id);
                         return Ok(());
                     }
                     EnterSubBlock => {
                         let block_id = cursor.read_vbr(8)?;
-                        let new_abbrev_width = cursor.read_vbr(4)? as usize;
-                        cursor.advance(32)?;
+                        let new_abbrev_width = cursor.read_vbr(4)? as u8;
+                        cursor.align32()?;
                         let block_length = cursor.read(32)? as usize * 4;
                         let cursor = &mut cursor.take_slice(block_length)?;
                         if block_id == 0 {

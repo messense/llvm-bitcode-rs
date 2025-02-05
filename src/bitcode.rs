@@ -63,21 +63,21 @@ impl Record {
         cursor: &mut Cursor<'_>,
         operand: &Operand,
     ) -> Result<u64, Error> {
-        match operand {
+        match *operand {
             Operand::Char6 => {
-                let value = cursor.read(6)?;
-                match value {
-                    0..=25 => Ok(value + u64::from('a' as u32)),
-                    26..=51 => Ok(value + u64::from('A' as u32) - 26),
-                    52..=61 => Ok(value + u64::from('0' as u32) - 52),
-                    62 => Ok(u64::from('.' as u32)),
-                    63 => Ok(u64::from('_' as u32)),
-                    _ => Err(Error::InvalidAbbrev),
+                let value = cursor.read(6)? as u8;
+                Ok(u64::from(match value {
+                    0..=25 => value + b'a',
+                    26..=51 => value + (b'A' - 26),
+                    52..=61 => value - (52 - b'0'),
+                    62 => b'.',
+                    63 => b'_',
+                    _ => return Err(Error::InvalidAbbrev),
+                }))
                 }
-            }
-            Operand::Literal(value) => Ok(*value),
-            Operand::Fixed(width) => Ok(cursor.read(*width as usize)?),
-            Operand::Vbr(width) => Ok(cursor.read_vbr(*width as usize)?),
+            Operand::Literal(value) => Ok(value),
+            Operand::Fixed(width) => Ok(cursor.read(width)?),
+            Operand::Vbr(width) => Ok(cursor.read_vbr(width)?),
             Operand::Array(_) | Operand::Blob => Err(Error::InvalidAbbrev),
         }
     }
@@ -85,7 +85,7 @@ impl Record {
     pub(crate) fn from_cursor_abbrev(
         cursor: &mut Cursor<'_>,
         abbrev: &Abbreviation,
-    ) -> Result<Record, Error> {
+    ) -> Result<Self, Error> {
         let code =
             Self::read_single_abbreviated_record_operand(cursor, abbrev.operands.first().unwrap())?;
         let last_operand = abbrev.operands.last().unwrap();
@@ -125,9 +125,9 @@ impl Record {
                 }
                 Operand::Blob => {
                     let length = cursor.read_vbr(6)? as usize;
-                    cursor.advance(32)?;
+                    cursor.align32()?;
                     let data = cursor.read_bytes(length)?.to_vec();
-                    cursor.advance(32)?;
+                    cursor.align32()?;
                     Some(Payload::Blob(data))
                 }
                 _ => unreachable!(),
@@ -142,14 +142,14 @@ impl Record {
         })
     }
 
-    pub(crate) fn from_cursor<'input>(cursor: &mut Cursor<'input>) -> Result<Record, Error> {
+    pub(crate) fn from_cursor(cursor: &mut Cursor<'_>) -> Result<Self, Error> {
         let code = cursor.read_vbr(6)?;
         let num_ops = cursor.read_vbr(6)? as usize;
         let mut operands = Vec::with_capacity(num_ops);
         for _ in 0..num_ops {
             operands.push(cursor.read_vbr(6)?);
         }
-        let record = Record {
+        let record = Self {
             id: code,
             fields: operands,
             payload: None,
@@ -157,6 +157,8 @@ impl Record {
         Ok(record)
     }
 
+    // Read remainder of the fields as string chars
+    #[must_use]
     pub fn string(&self, start_at: usize) -> String {
         self.fields
             .iter()
