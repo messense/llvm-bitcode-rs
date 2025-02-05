@@ -58,7 +58,7 @@ fn test_bitstream_reader() {
                 match payload {
                     Payload::Array(ele) => format!("array({} elements)", ele.len()),
                     Payload::Blob(blob) => format!("blob({} bytes)", blob.len()),
-                    Payload::Char6String(s) => s.to_string(),
+                    Payload::Char6String(s) => s,
                 }
             } else {
                 "none".to_string()
