@@ -538,7 +538,7 @@ impl Bitcode {
         let mut reader = BitStreamReader::new();
         let mut visitor = CollectingVisitor::new();
         reader.read_block(
-            &mut Cursor::new(stream),
+            Cursor::new(stream),
             BitStreamReader::TOP_LEVEL_BLOCK_ID,
             2,
             &mut visitor,
@@ -563,7 +563,7 @@ impl Bitcode {
         }
         let mut reader = BitStreamReader::new();
         reader.read_block(
-            &mut Cursor::new(stream),
+            Cursor::new(stream),
             BitStreamReader::TOP_LEVEL_BLOCK_ID,
             2,
             visitor,

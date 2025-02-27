@@ -65,6 +65,29 @@ impl From<bits::Error> for Error {
     }
 }
 
+/// A block can contain either nested blocks or records.
+/// LLVM writes blocks first, but the format allows them to be mixed freely.
+#[derive(Debug)]
+pub enum BlockItem<'cursor, 'input> {
+    /// Recurse
+    Block(BlockIter<'cursor, 'input>),
+    /// Read a record from the current block
+    Record(RecordIter<'cursor, 'input>),
+}
+
+/// Iterator content directly in a block
+#[derive(Debug)]
+pub struct BlockIter<'global_state, 'input> {
+    /// ID of the block being iterated
+    pub id: u64,
+    cursor: Cursor<'input>,
+    abbrev_width: u8,
+    /// Abbreviations defined in this block
+    block_local_abbrevs: Vec<Arc<Abbreviation>>,
+    /// Global abbreviations and names
+    reader: &'global_state mut BitStreamReader,
+}
+
 /// Bitstream reader
 #[derive(Debug, Clone)]
 pub struct BitStreamReader {
@@ -85,7 +108,35 @@ impl BitStreamReader {
         }
     }
 
+    /// Skip `Signature` first
+    pub fn iter_bitcode<'input>(&mut self, bitcode_data: &'input [u8]) -> BlockIter<'_, 'input> {
+        BlockIter::new(self, Cursor::new(bitcode_data), Self::TOP_LEVEL_BLOCK_ID, 2)
+    }
+
+    fn visit_block<V: BitStreamVisitor>(
+        mut block: BlockIter<'_, '_>,
+        visitor: &mut V,
+    ) -> Result<(), Error> {
+        let block_id = block.id;
+        while let Some(item) = block.next()? {
+            match item {
+                BlockItem::Block(new_block) => {
+                    let new_id = new_block.id;
+                    if visitor.should_enter_block(new_id) {
+                        Self::visit_block(new_block, visitor)?;
+                        visitor.did_exit_block(new_id);
+                    }
+                }
+                BlockItem::Record(record) => {
+                    visitor.visit(block_id, record.into_record()?);
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Read abbreviated operand
+    #[inline(never)]
     fn read_abbrev_op(cursor: &mut Cursor<'_>, num_ops_left: &mut usize) -> Result<Operand, Error> {
         if *num_ops_left == 0 {
             return Err(Error::InvalidAbbrev);
@@ -140,7 +191,7 @@ impl BitStreamReader {
     }
 
     /// Read block info block
-    pub fn read_block_info_block(
+    fn read_block_info_block(
         &mut self,
         cursor: &mut Cursor<'_>,
         abbrev_width: u8,
@@ -203,78 +254,109 @@ impl BitStreamReader {
     /// Read block with visitor
     pub fn read_block<V: BitStreamVisitor>(
         &mut self,
-        cursor: &mut Cursor<'_>,
+        cursor: Cursor<'_>,
         block_id: u64,
         abbrev_width: u8,
         visitor: &mut V,
     ) -> Result<(), Error> {
-        use BuiltinAbbreviationId::*;
-        let mut block_local_abbrevs = Vec::new();
+        Self::visit_block(
+            BlockIter::new(self, cursor, block_id, abbrev_width),
+            visitor,
+        )
+    }
+}
 
-        while !cursor.is_at_end() {
-            let abbrev_id = cursor.read(abbrev_width)?;
-            if let Ok(abbrev_id) = BuiltinAbbreviationId::try_from(abbrev_id) {
-                match abbrev_id {
-                    EndBlock => {
-                        cursor.align32()?;
-                        visitor.did_exit_block(block_id);
-                        return Ok(());
-                    }
-                    EnterSubBlock => {
-                        let block_id = cursor.read_vbr(8)?;
-                        let new_abbrev_width = cursor.read_vbr(4)? as u8;
-                        cursor.align32()?;
-                        let block_length = cursor.read(32)? as usize * 4;
-                        let cursor = &mut cursor.take_slice(block_length)?;
-                        if block_id == 0 {
-                            self.read_block_info_block(cursor, new_abbrev_width)?;
-                        } else {
-                            if !visitor.should_enter_block(block_id) {
-                                cursor.skip_bytes(block_length)?;
-                                continue;
-                            }
-                            self.read_block(cursor, block_id, new_abbrev_width, visitor)?;
-                        }
-                    }
-                    DefineAbbreviation => {
-                        Self::define_abbrev(cursor, &mut block_local_abbrevs)?;
-                    }
-                    UnabbreviatedRecord => {
-                        visitor.visit(block_id, RecordIter::from_cursor(cursor)?.into_record()?);
-                    }
-                }
+impl<'global_state, 'input> BlockIter<'global_state, 'input> {
+    /// Returns the next item (block or record) in this block
+    pub fn next<'parent>(&'parent mut self) -> Result<Option<BlockItem<'parent, 'input>>, Error> {
+        if self.cursor.is_at_end() {
+            return if self.id == BitStreamReader::TOP_LEVEL_BLOCK_ID {
+                Ok(None)
             } else {
-                let abbrev_index = abbrev_id as usize - 4;
-                let global_abbrevs = self
-                    .global_abbrevs
-                    .get(&block_id)
-                    .map(|v| v.as_slice())
-                    .unwrap_or_default();
+                Err(Error::MissingEndBlock(self.id))
+            };
+        }
 
-                // > Any abbreviations defined in a BLOCKINFO record for the particular block type receive IDs first, in order,
-                // > followed by any abbreviations defined within the block itself.
-                let abbrev =
-                    if let Some(local_index) = abbrev_index.checked_sub(global_abbrevs.len()) {
-                        block_local_abbrevs.get(local_index)
-                    } else {
-                        global_abbrevs.get(abbrev_index)
-                    };
+        let abbrev_id = self.cursor.read(self.abbrev_width)?;
 
-                let abbrev = abbrev.ok_or(Error::NoSuchAbbrev {
-                    block_id,
-                    abbrev_id: abbrev_id as usize,
-                })?;
+        if let Ok(builtin_abbrev) = BuiltinAbbreviationId::try_from(abbrev_id) {
+            use BuiltinAbbreviationId::*;
+            match builtin_abbrev {
+                EndBlock => {
+                    self.cursor.align32()?;
+                    Ok(None)
+                }
+                EnterSubBlock => {
+                    let block_id = self.cursor.read_vbr(8)?;
+                    let new_abbrev_width = self.cursor.read_vbr(4)? as u8;
+                    self.cursor.align32()?;
+                    let block_length = self.cursor.read(32)? as usize * 4;
+                    let mut cursor = self.cursor.take_slice(block_length)?;
 
-                visitor.visit(
-                    block_id,
-                    RecordIter::from_cursor_abbrev(cursor, abbrev.clone())?.into_record()?,
-                );
-                continue;
+                    if block_id == 0 {
+                        self.reader
+                            .read_block_info_block(&mut cursor, new_abbrev_width)?;
+                        return self.next();
+                    }
+
+                    // Create new block iterator
+                    let block_iter =
+                        BlockIter::new(self.reader, cursor, block_id, new_abbrev_width);
+                    Ok(Some(BlockItem::Block(block_iter)))
+                }
+                DefineAbbreviation => {
+                    BitStreamReader::define_abbrev(
+                        &mut self.cursor,
+                        &mut self.block_local_abbrevs,
+                    )?;
+                    self.next()
+                }
+                UnabbreviatedRecord => {
+                    let record_iter = RecordIter::from_cursor(&mut self.cursor)?;
+                    Ok(Some(BlockItem::Record(record_iter)))
+                }
             }
+        } else {
+            let abbrev_index = abbrev_id as usize - 4;
+            let global_abbrevs = self
+                .reader
+                .global_abbrevs
+                .get(&self.id)
+                .map(|v| v.as_slice())
+                .unwrap_or_default();
+
+            // > Any abbreviations defined in a BLOCKINFO record for the particular block type receive IDs first,
+            // > followed by any abbreviations defined within the block itself.
+            let abbrev = if let Some(local_index) = abbrev_index.checked_sub(global_abbrevs.len()) {
+                self.block_local_abbrevs.get(local_index).cloned()
+            } else {
+                global_abbrevs.get(abbrev_index).cloned()
+            };
+
+            let abbrev = abbrev.ok_or(Error::NoSuchAbbrev {
+                block_id: self.id,
+                abbrev_id: abbrev_id as usize,
+            })?;
+
+            Ok(Some(BlockItem::Record(RecordIter::from_cursor_abbrev(
+                &mut self.cursor,
+                abbrev,
+            )?)))
         }
-        if block_id != Self::TOP_LEVEL_BLOCK_ID {
-            return Err(Error::MissingEndBlock(block_id));
+    }
+
+    fn new(
+        reader: &'global_state mut BitStreamReader,
+        cursor: Cursor<'input>,
+        block_id: u64,
+        abbrev_width: u8,
+    ) -> Self {
+        Self {
+            id: block_id,
+            cursor,
+            abbrev_width,
+            block_local_abbrevs: Vec::new(),
+            reader,
         }
-        Ok(())
     }
 }
