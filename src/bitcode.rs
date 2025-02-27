@@ -1,6 +1,9 @@
 use crate::bits::Cursor;
 use crate::bitstream::{Abbreviation, Operand};
 use std::collections::HashMap;
+use std::num::NonZero;
+use std::ops::Range;
+use std::sync::Arc;
 
 use crate::read::{BitStreamReader, Error};
 use crate::visitor::{BitStreamVisitor, CollectingVisitor};
@@ -51,12 +54,49 @@ pub struct Record {
 }
 
 impl Record {
+    #[must_use]
     pub fn fields(&self) -> &[u64] {
         &self.fields
     }
 
     pub fn take_payload(&mut self) -> Option<Payload> {
         self.payload.take()
+    }
+}
+
+#[derive(Debug)]
+enum Ops {
+    Abbrev {
+        /// Next op to read
+        pos: usize,
+        abbrev: Arc<Abbreviation>,
+    },
+    /// Num ops left
+    Full(usize),
+}
+
+/// Data records consist of a record code and a number of (up to) 64-bit integer values
+///
+/// The interpretation of the code and values is application specific and may vary between different block types.
+#[derive(Debug)]
+pub struct RecordIter<'cursor, 'input> {
+    /// Record code
+    pub id: u64,
+    cursor: &'cursor mut Cursor<'input>,
+    ops: Ops,
+}
+
+impl<'cursor, 'input> RecordIter<'cursor, 'input> {
+    pub(crate) fn into_record(mut self) -> Result<Record, Error> {
+        let mut fields = Vec::with_capacity(self.len());
+        while let Some(f) = self.next()? {
+            fields.push(f);
+        }
+        Ok(Record {
+            id: self.id,
+            fields,
+            payload: self.payload().ok().flatten(),
+        })
     }
 
     fn read_single_abbreviated_record_operand(
@@ -74,7 +114,7 @@ impl Record {
                     63 => b'_',
                     _ => return Err(Error::InvalidAbbrev),
                 }))
-                }
+            }
             Operand::Literal(value) => Ok(value),
             Operand::Fixed(width) => Ok(cursor.read(width)?),
             Operand::Vbr(width) => Ok(cursor.read_vbr(width)?),
@@ -83,93 +123,261 @@ impl Record {
     }
 
     pub(crate) fn from_cursor_abbrev(
-        cursor: &mut Cursor<'_>,
-        abbrev: &Abbreviation,
+        cursor: &'cursor mut Cursor<'input>,
+        abbrev: Arc<Abbreviation>,
     ) -> Result<Self, Error> {
-        let code =
-            Self::read_single_abbreviated_record_operand(cursor, abbrev.operands.first().unwrap())?;
-        let last_operand = abbrev.operands.last().unwrap();
-        let last_regular_operand_index =
-            abbrev.operands.len() - (if last_operand.is_payload() { 1 } else { 0 });
-        let mut fields = Vec::new();
-        for op in &abbrev.operands[1..last_regular_operand_index] {
-            fields.push(Self::read_single_abbreviated_record_operand(cursor, op)?);
-        }
-        let payload = if last_operand.is_payload() {
-            match last_operand {
-                Operand::Array(element) => {
-                    let length = cursor.read_vbr(6)? as usize;
-                    if matches!(**element, Operand::Char6) {
-                        let mut s = String::with_capacity(length);
-                        for _ in 0..length {
-                            s.push(
-                                u32::try_from(Self::read_single_abbreviated_record_operand(
-                                    cursor, element,
-                                )?)
-                                .ok()
-                                .and_then(char::from_u32)
-                                .unwrap_or('\u{fffd}'),
-                            );
-                        }
-
-                        Some(Payload::Char6String(s))
-                    } else {
-                        let mut elements = Vec::with_capacity(length);
-                        for _ in 0..length {
-                            elements.push(Self::read_single_abbreviated_record_operand(
-                                cursor, element,
-                            )?);
-                        }
-                        Some(Payload::Array(elements))
-                    }
-                }
-                Operand::Blob => {
-                    let length = cursor.read_vbr(6)? as usize;
-                    cursor.align32()?;
-                    let data = cursor.read_bytes(length)?.to_vec();
-                    cursor.align32()?;
-                    Some(Payload::Blob(data))
-                }
-                _ => unreachable!(),
-            }
-        } else {
-            None
-        };
+        let id = Self::read_single_abbreviated_record_operand(
+            cursor,
+            abbrev.operands.first().ok_or(Error::InvalidAbbrev)?,
+        )?;
         Ok(Self {
-            id: code,
-            fields,
-            payload,
+            id,
+            cursor,
+            ops: Ops::Abbrev { pos: 1, abbrev },
         })
     }
 
-    pub(crate) fn from_cursor(cursor: &mut Cursor<'_>) -> Result<Self, Error> {
-        let code = cursor.read_vbr(6)?;
+    pub(crate) fn from_cursor(cursor: &'cursor mut Cursor<'input>) -> Result<Self, Error> {
+        let id = cursor.read_vbr(6)?;
         let num_ops = cursor.read_vbr(6)? as usize;
-        let mut operands = Vec::with_capacity(num_ops);
-        for _ in 0..num_ops {
-            operands.push(cursor.read_vbr(6)?);
+        Ok(Self {
+            id,
+            cursor,
+            ops: Ops::Full(num_ops),
+        })
+    }
+
+    fn payload(&mut self) -> Result<Option<Payload>, Error> {
+        match &mut self.ops {
+            Ops::Abbrev { pos, abbrev } => match abbrev.operands.get(*pos) {
+                Some(Operand::Blob) => Ok(Some(Payload::Blob(self.blob()?.to_vec()))),
+                Some(Operand::Array(op)) if matches!(**op, Operand::Char6) => {
+                    Ok(Some(Payload::Char6String(self.string()?)))
+                }
+                Some(Operand::Array(_)) => Ok(Some(Payload::Array(self.array()?))),
+                None => Ok(None),
+                other => Err(Error::UnexpectedOperand(other.cloned())),
+            },
+            Ops::Full(_) => Err(Error::UnexpectedOperand(None)),
         }
-        let record = Self {
-            id: code,
-            fields: operands,
-            payload: None,
-        };
-        Ok(record)
+    }
+
+    /// Number of unread fields, excludes string/array/blob
+    #[must_use]
+    pub fn len(&self) -> usize {
+        match &self.ops {
+            Ops::Abbrev { pos, abbrev } => {
+                if abbrev
+                    .operands
+                    .get(*pos)
+                    .is_some_and(|op| matches!(op, Operand::Array(_) | Operand::Blob))
+                {
+                    return 0;
+                }
+                abbrev.operands.len() - *pos
+            }
+            Ops::Full(num_ops) => *num_ops,
+        }
+    }
+
+    pub fn next(&mut self) -> Result<Option<u64>, Error> {
+        match &mut self.ops {
+            Ops::Abbrev { pos, abbrev } => {
+                let Some(op) = abbrev.operands.get(*pos) else {
+                    return Ok(None);
+                };
+                if matches!(op, Operand::Array(_) | Operand::Blob) {
+                    return Ok(None);
+                }
+                *pos += 1;
+                Ok(Some(Self::read_single_abbreviated_record_operand(
+                    self.cursor,
+                    op,
+                )?))
+            }
+            Ops::Full(num_ops) => {
+                if *num_ops == 0 {
+                    return Ok(None);
+                }
+                *num_ops -= 1;
+                Ok(Some(self.cursor.read_vbr(6)?))
+            }
+        }
+    }
+
+    pub fn u64(&mut self) -> Result<u64, Error> {
+        self.next()?.ok_or(Error::EndOfRecord)
+    }
+
+    pub fn nzu64(&mut self) -> Result<Option<NonZero<u64>>, Error> {
+        self.u64().map(NonZero::new)
+    }
+
+    pub fn i64(&mut self) -> Result<i64, Error> {
+        let v = self.u64()?;
+        let shifted = (v >> 1) as i64;
+        Ok(if (v & 1) == 0 {
+            shifted
+        } else if v != 1 {
+            -shifted
+        } else {
+            1 << 63
+        })
+    }
+
+    pub fn u32(&mut self) -> Result<u32, Error> {
+        self.u64()?.try_into().map_err(|_| Error::ValueOverflow)
+    }
+
+    pub fn nzu32(&mut self) -> Result<Option<NonZero<u32>>, Error> {
+        self.u32().map(NonZero::new)
+    }
+
+    pub fn u8(&mut self) -> Result<u8, Error> {
+        self.u64()?.try_into().map_err(|_| Error::ValueOverflow)
+    }
+
+    pub fn nzu8(&mut self) -> Result<Option<NonZero<u8>>, Error> {
+        self.u8().map(NonZero::new)
+    }
+
+    pub fn bool(&mut self) -> Result<bool, Error> {
+        match self.u64()? {
+            0 => Ok(false),
+            1 => Ok(true),
+            _ => Err(Error::ValueOverflow),
+        }
+    }
+
+    pub fn range(&mut self) -> Result<Range<usize>, Error> {
+        let start = self.u64()? as usize;
+        Ok(Range {
+            start,
+            end: start + self.u64()? as usize,
+        })
+    }
+
+    pub fn blob(&mut self) -> Result<&'input [u8], Error> {
+        match &mut self.ops {
+            Ops::Abbrev { pos, abbrev } => match abbrev.operands.get(*pos) {
+                Some(Operand::Blob) => {
+                    *pos += 1;
+                    let length = self.cursor.read_vbr(6)? as usize;
+                    self.cursor.align32()?;
+                    let data = self.cursor.read_bytes(length)?;
+                    self.cursor.align32()?;
+                    Ok(data)
+                }
+                other => Err(Error::UnexpectedOperand(other.cloned())),
+            },
+            Ops::Full(_) => Err(Error::UnexpectedOperand(None)),
+        }
+    }
+
+    pub fn array(&mut self) -> Result<Vec<u64>, Error> {
+        match &mut self.ops {
+            Ops::Abbrev { pos, abbrev } => match abbrev.operands.get(*pos) {
+                Some(Operand::Array(op)) if !matches!(**op, Operand::Char6) => {
+                    *pos += 1;
+                    let length = self.cursor.read_vbr(6)? as usize;
+                    let mut out = Vec::with_capacity(length);
+                    for _ in 0..length {
+                        out.push(Self::read_single_abbreviated_record_operand(
+                            self.cursor,
+                            op,
+                        )?);
+                    }
+                    Ok(out)
+                }
+                other => Err(Error::UnexpectedOperand(other.cloned())),
+            },
+            Ops::Full(_) => Err(Error::UnexpectedOperand(None)),
+        }
     }
 
     // Read remainder of the fields as string chars
-    #[must_use]
-    pub fn string(&self, start_at: usize) -> String {
-        self.fields
-            .iter()
-            .skip(start_at)
-            .map(|&x| {
-                u32::try_from(x)
-                    .ok()
-                    .and_then(char::from_u32)
-                    .unwrap_or('\u{fffd}')
-            })
-            .collect()
+    pub fn string(&mut self) -> Result<String, Error> {
+        match &mut self.ops {
+            Ops::Abbrev { pos, abbrev } => match abbrev.operands.get(*pos) {
+                Some(Operand::Array(el)) => {
+                    *pos += 1;
+                    let len = self.cursor.read_vbr(6)? as usize;
+                    let mut out = String::with_capacity(len);
+
+                    match &**el {
+                        Operand::Char6 => {
+                            for _ in 0..len {
+                                let ch = match self.cursor.read(6)? as u8 {
+                                    value @ 0..=25 => value + b'a',
+                                    value @ 26..=51 => value + (b'A' - 26),
+                                    value @ 52..=61 => value - (52 - b'0'),
+                                    62 => b'.',
+                                    63 => b'_',
+                                    _ => return Err(Error::InvalidAbbrev),
+                                };
+                                out.push(ch as char);
+                            }
+                        }
+                        Operand::Fixed(width @ 6..=8) => {
+                            for _ in 0..len {
+                                out.push(
+                                    u32::try_from(self.cursor.read(*width)?)
+                                        .ok()
+                                        .and_then(char::from_u32)
+                                        .unwrap_or('\u{fffd}'),
+                                );
+                            }
+                        }
+                        other => return Err(Error::UnexpectedOperand(Some(other.clone()))),
+                    }
+                    Ok(out)
+                }
+                other => Err(Error::UnexpectedOperand(other.cloned())),
+            },
+            Ops::Full(num_ops) => {
+                let len = std::mem::replace(num_ops, 0);
+                let mut out = String::with_capacity(len);
+                for _ in 0..len {
+                    out.push(char::from_u32(self.cursor.read_vbr(6)? as u32).unwrap_or('\u{fffd}'));
+                }
+                Ok(out)
+            }
+        }
+    }
+
+    /// Zero-terminated string, assumes latin1 encoding
+    pub fn zstring(&mut self) -> Result<String, Error> {
+        let mut s = String::new();
+        while let Some(b) = self.nzu8()? {
+            s.push(b.get() as char);
+        }
+        Ok(s)
+    }
+}
+
+impl Iterator for RecordIter<'_, '_> {
+    type Item = Result<u64, Error>;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.next().transpose()
+    }
+}
+
+impl Drop for RecordIter<'_, '_> {
+    /// Must drain the remaining records to advance the cursor to the next record
+    fn drop(&mut self) {
+        match &mut self.ops {
+            Ops::Abbrev { pos, abbrev } => {
+                if *pos < abbrev.operands.len() {
+                    while let Ok(Some(_)) = self.next() {}
+                    let _ = self.payload();
+                }
+            }
+            Ops::Full(n) => {
+                if *n != 0 {
+                    while let Ok(Some(_)) = self.next() {}
+                }
+            }
+        }
     }
 }
 
