@@ -5,57 +5,64 @@ use num_enum::TryFromPrimitive;
 /// a bitstream file.
 #[derive(Debug, Clone)]
 pub struct Abbreviation {
-    /// Abbreviation operands
-    pub operands: Vec<Operand>,
+    /// All operands except the last that may be an array/string/blob
+    pub fields: Vec<ScalarOperand>,
+    pub payload: Option<PayloadOperand>,
 }
 
 /// Abbreviation operand
-#[derive(Debug, Clone)]
-pub enum Operand {
+#[derive(Debug, Copy, Clone)]
+pub enum ScalarOperand {
     /// A literal value (emitted as a VBR8 field)
     Literal(u64),
     /// A fixed-width field
     Fixed(u8),
     /// A VBR-encoded value with the provided chunk width
     Vbr(u8),
+    /// A char6-encoded ASCII character
+    Char6,
+}
+
+/// Abbreviation operand
+#[derive(Debug, Copy, Clone)]
+pub enum PayloadOperand {
+    /// Emitted as a vbr6 value, padded to a 32-bit boundary and then
+    /// an array of 8-bit objects
+    Blob,
     /// An array of values. This expects another operand encoded
     /// directly after indicating the element type.
     /// The array will begin with a vbr6 value indicating the length of
     /// the following array.
-    Array(Box<Operand>),
-    /// A char6-encoded ASCII character
-    Char6,
-    /// Emitted as a vbr6 value, padded to a 32-bit boundary and then
-    /// an array of 8-bit objects
-    Blob,
+    Array(ScalarOperand),
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum Operand {
+    Scalar(ScalarOperand),
+    Payload(PayloadOperand),
 }
 
 impl Operand {
     /// Whether this case is payload
     #[must_use]
     pub fn is_payload(&self) -> bool {
-        use Operand::*;
-
-        match self {
-            Array(_) | Blob => true,
-            Literal(_) | Fixed(_) | Vbr(_) | Char6 => false,
-        }
+        matches!(self, Self::Payload(_))
     }
 
     /// Whether this case is the `literal` case
     #[must_use]
     pub fn is_literal(&self) -> bool {
-        matches!(self, Self::Literal(_))
+        matches!(self, Self::Scalar(ScalarOperand::Literal(_)))
     }
 
     #[must_use]
     pub fn is_array(&self) -> bool {
-        matches!(self, Self::Array(_))
+        matches!(self, Self::Payload(PayloadOperand::Array(_)))
     }
 
     #[must_use]
     pub fn is_blob(&self) -> bool {
-        matches!(self, Self::Blob)
+        matches!(self, Self::Payload(PayloadOperand::Blob))
     }
 
     /// The `llvm::BitCodeAbbrevOp::Encoding` value this
@@ -64,15 +71,13 @@ impl Operand {
     ///         <http://llvm.org/docs/BitCodeFormat.html#define-abbrev-encoding>
     #[must_use]
     pub fn encoded_kind(&self) -> u8 {
-        use Operand::*;
-
         match self {
-            Literal(_) => 0,
-            Fixed(_) => 1,
-            Vbr(_) => 2,
-            Array(_) => 3,
-            Char6 => 4,
-            Blob => 5,
+            Self::Scalar(ScalarOperand::Literal(_)) => 0,
+            Self::Scalar(ScalarOperand::Fixed(_)) => 1,
+            Self::Scalar(ScalarOperand::Vbr(_)) => 2,
+            Self::Payload(PayloadOperand::Array(_)) => 3,
+            Self::Scalar(ScalarOperand::Char6) => 4,
+            Self::Payload(PayloadOperand::Blob) => 5,
         }
     }
 }
