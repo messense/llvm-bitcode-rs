@@ -1,3 +1,4 @@
+use crate::bitstream::{PayloadOperand, ScalarOperand};
 use std::sync::Arc;
 use std::{collections::HashMap, convert::TryFrom, error, fmt};
 
@@ -93,17 +94,22 @@ impl BitStreamReader {
 
         let is_literal = cursor.read(1)?;
         if is_literal == 1 {
-            return Ok(Operand::Literal(cursor.read_vbr(8)?));
+            return Ok(Operand::Scalar(ScalarOperand::Literal(cursor.read_vbr(8)?)));
         }
         let op_type = cursor.read(3)?;
         Ok(match op_type {
-            1 => Operand::Fixed(cursor.read_vbr(5)? as u8),
-            2 => Operand::Vbr(cursor.read_vbr(5)? as u8),
+            1 => Operand::Scalar(ScalarOperand::Fixed(cursor.read_vbr(5)? as u8)),
+            2 => Operand::Scalar(ScalarOperand::Vbr(cursor.read_vbr(5)? as u8)),
             3 if *num_ops_left == 1 => {
-                Operand::Array(Box::new(Self::read_abbrev_op(cursor, num_ops_left)?))
+                let op = Self::read_abbrev_op(cursor, num_ops_left)?;
+                if let Operand::Scalar(op) = op {
+                    Operand::Payload(PayloadOperand::Array(op))
+                } else {
+                    return Err(Error::UnexpectedOperand(Some(op)));
+                }
             }
-            4 => Operand::Char6,
-            5 if *num_ops_left == 0 => Operand::Blob,
+            4 => Operand::Scalar(ScalarOperand::Char6),
+            5 if *num_ops_left == 0 => Operand::Payload(PayloadOperand::Blob),
             _ => return Err(Error::InvalidAbbrev),
         })
     }
@@ -115,11 +121,20 @@ impl BitStreamReader {
     ) -> Result<(), Error> {
         let mut num_ops = cursor.read_vbr(5)? as usize;
 
-        let mut operands = Vec::with_capacity(num_ops);
-        while num_ops > 0 && operands.len() != operands.capacity() {
-            operands.push(Self::read_abbrev_op(cursor, &mut num_ops)?);
+        let mut fields = Vec::with_capacity(num_ops);
+        let mut payload = None;
+        while num_ops > 0 && fields.len() != fields.capacity() {
+            match Self::read_abbrev_op(cursor, &mut num_ops)? {
+                Operand::Scalar(op) => {
+                    fields.push(op);
+                }
+                Operand::Payload(op) if num_ops == 0 => {
+                    payload = Some(op);
+                }
+                op => return Err(Error::UnexpectedOperand(Some(op))),
+            }
         }
-        let abbrev = Arc::new(Abbreviation { operands });
+        let abbrev = Arc::new(Abbreviation { fields, payload });
         abbrevs.push(abbrev);
         Ok(())
     }
@@ -161,7 +176,7 @@ impl BitStreamReader {
                             let id = record
                                 .u64()
                                 .ok()
-                                .filter(|_| record.len() == 0)
+                                .filter(|_| record.is_empty())
                                 .ok_or(Error::InvalidBlockInfoRecord(record.id))?;
                             current_block_id = Some(id);
                         }

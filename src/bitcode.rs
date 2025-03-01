@@ -1,5 +1,6 @@
 use crate::bits::Cursor;
 use crate::bitstream::{Abbreviation, Operand};
+use crate::bitstream::{PayloadOperand, ScalarOperand};
 use std::collections::HashMap;
 use std::num::NonZero;
 use std::ops::Range;
@@ -67,8 +68,10 @@ impl Record {
 #[derive(Debug)]
 enum Ops {
     Abbrev {
-        /// Next op to read
-        pos: usize,
+        /// If under `abbrev.fields.len()`, then it's the next op to read
+        /// If equals `abbrev.fields.len()`, then payload is next
+        /// If greater than `abbrev.fields.len()`, then payload has been read
+        state: usize,
         abbrev: Arc<Abbreviation>,
     },
     /// Num ops left
@@ -99,12 +102,9 @@ impl<'cursor, 'input> RecordIter<'cursor, 'input> {
         })
     }
 
-    fn read_single_abbreviated_record_operand(
-        cursor: &mut Cursor<'_>,
-        operand: &Operand,
-    ) -> Result<u64, Error> {
-        match *operand {
-            Operand::Char6 => {
+    fn read_scalar_operand(cursor: &mut Cursor<'_>, operand: ScalarOperand) -> Result<u64, Error> {
+        match operand {
+            ScalarOperand::Char6 => {
                 let value = cursor.read(6)? as u8;
                 Ok(u64::from(match value {
                     0..=25 => value + b'a',
@@ -115,10 +115,9 @@ impl<'cursor, 'input> RecordIter<'cursor, 'input> {
                     _ => return Err(Error::InvalidAbbrev),
                 }))
             }
-            Operand::Literal(value) => Ok(value),
-            Operand::Fixed(width) => Ok(cursor.read(width)?),
-            Operand::Vbr(width) => Ok(cursor.read_vbr(width)?),
-            Operand::Array(_) | Operand::Blob => Err(Error::InvalidAbbrev),
+            ScalarOperand::Literal(value) => Ok(value),
+            ScalarOperand::Fixed(width) => Ok(cursor.read(width)?),
+            ScalarOperand::Vbr(width) => Ok(cursor.read_vbr(width)?),
         }
     }
 
@@ -126,14 +125,12 @@ impl<'cursor, 'input> RecordIter<'cursor, 'input> {
         cursor: &'cursor mut Cursor<'input>,
         abbrev: Arc<Abbreviation>,
     ) -> Result<Self, Error> {
-        let id = Self::read_single_abbreviated_record_operand(
-            cursor,
-            abbrev.operands.first().ok_or(Error::InvalidAbbrev)?,
-        )?;
+        let id =
+            Self::read_scalar_operand(cursor, *abbrev.fields.first().ok_or(Error::InvalidAbbrev)?)?;
         Ok(Self {
             id,
             cursor,
-            ops: Ops::Abbrev { pos: 1, abbrev },
+            ops: Ops::Abbrev { state: 1, abbrev },
         })
     }
 
@@ -149,51 +146,46 @@ impl<'cursor, 'input> RecordIter<'cursor, 'input> {
 
     fn payload(&mut self) -> Result<Option<Payload>, Error> {
         match &mut self.ops {
-            Ops::Abbrev { pos, abbrev } => match abbrev.operands.get(*pos) {
-                Some(Operand::Blob) => Ok(Some(Payload::Blob(self.blob()?.to_vec()))),
-                Some(Operand::Array(op)) if matches!(**op, Operand::Char6) => {
-                    Ok(Some(Payload::Char6String(self.string()?)))
+            Ops::Abbrev { state, abbrev } => {
+                if *state > abbrev.fields.len() {
+                    return Ok(None);
                 }
-                Some(Operand::Array(_)) => Ok(Some(Payload::Array(self.array()?))),
-                None => Ok(None),
-                other => Err(Error::UnexpectedOperand(other.cloned())),
-            },
-            Ops::Full(_) => Err(Error::UnexpectedOperand(None)),
+                Ok(match abbrev.payload {
+                    Some(PayloadOperand::Blob) => Some(Payload::Blob(self.blob()?.to_vec())),
+                    Some(PayloadOperand::Array(ScalarOperand::Char6)) => {
+                        Some(Payload::Char6String(self.string()?))
+                    }
+                    Some(PayloadOperand::Array(_)) => Some(Payload::Array(self.array()?)),
+                    None => None,
+                })
+            }
+            Ops::Full(_) => Ok(None),
         }
     }
 
-    /// Number of unread fields, excludes string/array/blob
+    /// Number of unread fields, excludes string/array/blob payload
     #[must_use]
     pub fn len(&self) -> usize {
         match &self.ops {
-            Ops::Abbrev { pos, abbrev } => {
-                if abbrev
-                    .operands
-                    .get(*pos)
-                    .is_some_and(|op| matches!(op, Operand::Array(_) | Operand::Blob))
-                {
-                    return 0;
-                }
-                abbrev.operands.len() - *pos
-            }
+            Ops::Abbrev { state, abbrev } => abbrev.fields.len().saturating_sub(*state),
             Ops::Full(num_ops) => *num_ops,
         }
     }
 
+    /// Matches len, excludes string/array/blob payload
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn next(&mut self) -> Result<Option<u64>, Error> {
         match &mut self.ops {
-            Ops::Abbrev { pos, abbrev } => {
-                let Some(op) = abbrev.operands.get(*pos) else {
+            Ops::Abbrev { state, abbrev } => {
+                let Some(&op) = abbrev.fields.get(*state) else {
                     return Ok(None);
                 };
-                if matches!(op, Operand::Array(_) | Operand::Blob) {
-                    return Ok(None);
-                }
-                *pos += 1;
-                Ok(Some(Self::read_single_abbreviated_record_operand(
-                    self.cursor,
-                    op,
-                )?))
+                *state += 1;
+                Ok(Some(Self::read_scalar_operand(self.cursor, op)?))
             }
             Ops::Full(num_ops) => {
                 if *num_ops == 0 {
@@ -259,16 +251,15 @@ impl<'cursor, 'input> RecordIter<'cursor, 'input> {
 
     pub fn blob(&mut self) -> Result<&'input [u8], Error> {
         match &mut self.ops {
-            Ops::Abbrev { pos, abbrev } => match abbrev.operands.get(*pos) {
-                Some(Operand::Blob) => {
-                    *pos += 1;
+            Ops::Abbrev { state, abbrev } => match Self::take_payload_operand(state, abbrev)? {
+                Some(PayloadOperand::Blob) => {
                     let length = self.cursor.read_vbr(6)? as usize;
                     self.cursor.align32()?;
                     let data = self.cursor.read_bytes(length)?;
                     self.cursor.align32()?;
                     Ok(data)
                 }
-                other => Err(Error::UnexpectedOperand(other.cloned())),
+                other => Err(Error::UnexpectedOperand(other.map(Operand::Payload))),
             },
             Ops::Full(_) => Err(Error::UnexpectedOperand(None)),
         }
@@ -276,37 +267,68 @@ impl<'cursor, 'input> RecordIter<'cursor, 'input> {
 
     pub fn array(&mut self) -> Result<Vec<u64>, Error> {
         match &mut self.ops {
-            Ops::Abbrev { pos, abbrev } => match abbrev.operands.get(*pos) {
-                Some(Operand::Array(op)) if !matches!(**op, Operand::Char6) => {
-                    *pos += 1;
-                    let length = self.cursor.read_vbr(6)? as usize;
-                    let mut out = Vec::with_capacity(length);
-                    for _ in 0..length {
-                        out.push(Self::read_single_abbreviated_record_operand(
-                            self.cursor,
-                            op,
-                        )?);
+            Ops::Abbrev { state, abbrev } => match Self::take_payload_operand(state, abbrev)? {
+                Some(PayloadOperand::Array(op)) => {
+                    let len = self.cursor.read_vbr(6)? as usize;
+                    let mut out = Vec::with_capacity(len);
+                    for _ in 0..len {
+                        if out.len() == out.capacity() {
+                            break;
+                        }
+                        out.push(Self::read_scalar_operand(self.cursor, op)?);
                     }
                     Ok(out)
                 }
-                other => Err(Error::UnexpectedOperand(other.cloned())),
+                other => Err(Error::UnexpectedOperand(other.map(Operand::Payload))),
             },
-            Ops::Full(_) => Err(Error::UnexpectedOperand(None)),
+            // Not a proper array payload, but this fallback pattern is used by LLVM
+            Ops::Full(num_ops) => {
+                let len = *num_ops;
+                *num_ops = 0;
+                let mut out = Vec::with_capacity(len);
+                for _ in 0..len {
+                    if out.len() == out.capacity() {
+                        break;
+                    }
+                    out.push(self.cursor.read_vbr(6)?);
+                }
+                Ok(out)
+            }
+        }
+    }
+
+    /// Mark payload as read, if there is one
+    fn take_payload_operand(
+        state: &mut usize,
+        abbrev: &Abbreviation,
+    ) -> Result<Option<PayloadOperand>, Error> {
+        if *state == abbrev.fields.len() {
+            if abbrev.payload.is_some() {
+                *state += 1;
+            }
+            Ok(abbrev.payload)
+        } else {
+            Err(Error::UnexpectedOperand(
+                abbrev.fields.get(*state).copied().map(Operand::Scalar),
+            ))
         }
     }
 
     // Read remainder of the fields as string chars
     pub fn string(&mut self) -> Result<String, Error> {
         match &mut self.ops {
-            Ops::Abbrev { pos, abbrev } => match abbrev.operands.get(*pos) {
-                Some(Operand::Array(el)) => {
-                    *pos += 1;
+            Ops::Abbrev { state, abbrev } => match Self::take_payload_operand(state, abbrev)? {
+                Some(PayloadOperand::Array(el)) => {
+                    *state += 1;
                     let len = self.cursor.read_vbr(6)? as usize;
                     let mut out = String::with_capacity(len);
 
-                    match &**el {
-                        Operand::Char6 => {
+                    match el {
+                        ScalarOperand::Char6 => {
                             for _ in 0..len {
+                                if out.len() == out.capacity() {
+                                    break;
+                                }
                                 let ch = match self.cursor.read(6)? as u8 {
                                     value @ 0..=25 => value + b'a',
                                     value @ 26..=51 => value + (b'A' - 26),
@@ -318,26 +340,34 @@ impl<'cursor, 'input> RecordIter<'cursor, 'input> {
                                 out.push(ch as char);
                             }
                         }
-                        Operand::Fixed(width @ 6..=8) => {
+                        ScalarOperand::Fixed(width @ 6..=8) => {
                             for _ in 0..len {
+                                if out.len() == out.capacity() {
+                                    break;
+                                }
                                 out.push(
-                                    u32::try_from(self.cursor.read(*width)?)
+                                    u32::try_from(self.cursor.read(width)?)
                                         .ok()
                                         .and_then(char::from_u32)
                                         .unwrap_or('\u{fffd}'),
                                 );
                             }
                         }
-                        other => return Err(Error::UnexpectedOperand(Some(other.clone()))),
+                        other => {
+                            return Err(Error::UnexpectedOperand(Some(Operand::Scalar(other))));
+                        }
                     }
                     Ok(out)
                 }
-                other => Err(Error::UnexpectedOperand(other.cloned())),
+                other => Err(Error::UnexpectedOperand(other.map(Operand::Payload))),
             },
             Ops::Full(num_ops) => {
                 let len = std::mem::replace(num_ops, 0);
                 let mut out = String::with_capacity(len);
                 for _ in 0..len {
+                    if out.len() == out.capacity() {
+                        break;
+                    }
                     out.push(char::from_u32(self.cursor.read_vbr(6)? as u32).unwrap_or('\u{fffd}'));
                 }
                 Ok(out)
@@ -365,17 +395,10 @@ impl Iterator for RecordIter<'_, '_> {
 impl Drop for RecordIter<'_, '_> {
     /// Must drain the remaining records to advance the cursor to the next record
     fn drop(&mut self) {
-        match &mut self.ops {
-            Ops::Abbrev { pos, abbrev } => {
-                if *pos < abbrev.operands.len() {
-                    while let Ok(Some(_)) = self.next() {}
-                    let _ = self.payload();
-                }
-            }
-            Ops::Full(n) => {
-                if *n != 0 {
-                    while let Ok(Some(_)) = self.next() {}
-                }
+        while let Ok(Some(_)) = self.next() {}
+        if let Ops::Abbrev { abbrev, .. } = &self.ops {
+            if abbrev.payload.is_some() {
+                let _ = self.payload();
             }
         }
     }
