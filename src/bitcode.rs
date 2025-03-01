@@ -153,7 +153,9 @@ impl<'cursor, 'input> RecordIter<'cursor, 'input> {
                 Ok(match abbrev.payload {
                     Some(PayloadOperand::Blob) => Some(Payload::Blob(self.blob()?.to_vec())),
                     Some(PayloadOperand::Array(ScalarOperand::Char6)) => {
-                        Some(Payload::Char6String(self.string()?))
+                        Some(Payload::Char6String(
+                            String::from_utf8(self.string()?).map_err(|_| Error::InvalidAbbrev)?,
+                        ))
                     }
                     Some(PayloadOperand::Array(_)) => Some(Payload::Array(self.array()?)),
                     None => None,
@@ -273,6 +275,7 @@ impl<'cursor, 'input> RecordIter<'cursor, 'input> {
                     let mut out = Vec::with_capacity(len);
                     for _ in 0..len {
                         if out.len() == out.capacity() {
+                            debug_assert!(false);
                             break;
                         }
                         out.push(Self::read_scalar_operand(self.cursor, op)?);
@@ -288,6 +291,7 @@ impl<'cursor, 'input> RecordIter<'cursor, 'input> {
                 let mut out = Vec::with_capacity(len);
                 for _ in 0..len {
                     if out.len() == out.capacity() {
+                        debug_assert!(false);
                         break;
                     }
                     out.push(self.cursor.read_vbr(6)?);
@@ -314,19 +318,21 @@ impl<'cursor, 'input> RecordIter<'cursor, 'input> {
         }
     }
 
-    // Read remainder of the fields as string chars
-    pub fn string(&mut self) -> Result<String, Error> {
+    /// Read remainder of the fields as string chars
+    /// The strings are just binary blobs. LLVM doesn't guarantee any encoding.
+    pub fn string(&mut self) -> Result<Vec<u8>, Error> {
         match &mut self.ops {
             Ops::Abbrev { state, abbrev } => match Self::take_payload_operand(state, abbrev)? {
                 Some(PayloadOperand::Array(el)) => {
                     *state += 1;
                     let len = self.cursor.read_vbr(6)? as usize;
-                    let mut out = String::with_capacity(len);
+                    let mut out = Vec::with_capacity(len);
 
                     match el {
                         ScalarOperand::Char6 => {
                             for _ in 0..len {
                                 if out.len() == out.capacity() {
+                                    debug_assert!(false);
                                     break;
                                 }
                                 let ch = match self.cursor.read(6)? as u8 {
@@ -337,20 +343,16 @@ impl<'cursor, 'input> RecordIter<'cursor, 'input> {
                                     63 => b'_',
                                     _ => return Err(Error::InvalidAbbrev),
                                 };
-                                out.push(ch as char);
+                                out.push(ch);
                             }
                         }
                         ScalarOperand::Fixed(width @ 6..=8) => {
                             for _ in 0..len {
                                 if out.len() == out.capacity() {
+                                    debug_assert!(false);
                                     break;
                                 }
-                                out.push(
-                                    u32::try_from(self.cursor.read(width)?)
-                                        .ok()
-                                        .and_then(char::from_u32)
-                                        .unwrap_or('\u{fffd}'),
-                                );
+                                out.push(self.cursor.read(width)? as u8);
                             }
                         }
                         other => {
@@ -363,12 +365,10 @@ impl<'cursor, 'input> RecordIter<'cursor, 'input> {
             },
             Ops::Full(num_ops) => {
                 let len = std::mem::replace(num_ops, 0);
-                let mut out = String::with_capacity(len);
+                let mut out = Vec::with_capacity(len);
                 for _ in 0..len {
-                    if out.len() == out.capacity() {
-                        break;
-                    }
-                    out.push(char::from_u32(self.cursor.read_vbr(6)? as u32).unwrap_or('\u{fffd}'));
+                    let ch = self.cursor.read_vbr(6)?;
+                    out.push(u8::try_from(ch).map_err(|_| Error::ValueOverflow)?);
                 }
                 Ok(out)
             }
