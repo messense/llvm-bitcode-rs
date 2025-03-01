@@ -234,7 +234,9 @@ impl BitStreamReader {
                         BlockInfoCode::BlockName => {
                             let block_id = current_block_id.ok_or(Error::MissingSetBid)?;
                             let block_info = self.block_info.entry(block_id).or_default();
-                            block_info.name = record.string()?;
+                            if let Ok(name) = String::from_utf8(record.string()?) {
+                                block_info.name = name;
+                            }
                         }
                         BlockInfoCode::SetRecordName => {
                             let block_id = current_block_id.ok_or(Error::MissingSetBid)?;
@@ -242,8 +244,9 @@ impl BitStreamReader {
                                 .u64()
                                 .map_err(|_| Error::InvalidBlockInfoRecord(record.id))?;
                             let block_info = self.block_info.entry(block_id).or_default();
-                            let name = record.string()?;
-                            block_info.record_names.insert(record_id, name);
+                            if let Ok(name) = String::from_utf8(record.string()?) {
+                                block_info.record_names.insert(record_id, name);
+                            }
                         }
                     }
                 }
