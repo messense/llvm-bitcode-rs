@@ -19,6 +19,7 @@ pub enum Error {
     MissingSetBid,
     InvalidBlockInfoRecord(u64),
     NoSuchAbbrev { block_id: u32, abbrev_id: u32 },
+    UnexpectedBlock(u32),
     MissingEndBlock(u32),
     AbbrevWidthTooSmall(u8),
     ReadBits(bits::Error),
@@ -36,6 +37,7 @@ impl fmt::Display for Error {
             }
             Self::InvalidAbbrev => write!(f, "invalid abbreviation"),
             Self::NestedBlockInBlockInfo => write!(f, "nested block in block info"),
+            Self::UnexpectedBlock(id) => write!(f, "nested block {id}"),
             Self::MissingSetBid => write!(f, "missing SETBID"),
             Self::InvalidBlockInfoRecord(record_id) => {
                 write!(f, "invalid block info record `{record_id}`")
@@ -282,6 +284,16 @@ impl BitStreamReader {
 }
 
 impl<'global_state, 'input> BlockIter<'global_state, 'input> {
+    pub fn next_record<'parent>(
+        &'parent mut self,
+    ) -> Result<Option<RecordIter<'parent, 'input>>, Error> {
+        match self.next()? {
+            None => Ok(None),
+            Some(BlockItem::Record(rec)) => Ok(Some(rec)),
+            Some(BlockItem::Block(block)) => Err(Error::UnexpectedBlock(block.id)),
+        }
+    }
+
     /// Returns the next item (block or record) in this block
     pub fn next<'parent>(&'parent mut self) -> Result<Option<BlockItem<'parent, 'input>>, Error> {
         if self.cursor.is_at_end() {
