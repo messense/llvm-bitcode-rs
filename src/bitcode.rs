@@ -231,6 +231,11 @@ impl<'cursor, 'input> RecordIter<'cursor, 'input> {
         self.u64()?.try_into().map_err(|_| Error::ValueOverflow)
     }
 
+    pub fn try_from<U: TryFrom<u64>, T: TryFrom<U>>(&mut self) -> Result<T, Error> {
+        T::try_from(self.u64()?.try_into().map_err(|_| Error::ValueOverflow)?)
+            .map_err(|_| Error::ValueOverflow)
+    }
+
     pub fn nzu8(&mut self) -> Result<Option<NonZero<u8>>, Error> {
         self.u8().map(NonZero::new)
     }
