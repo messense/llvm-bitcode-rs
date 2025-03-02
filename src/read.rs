@@ -20,7 +20,7 @@ pub enum Error {
     InvalidBlockInfoRecord(u64),
     NoSuchAbbrev { block_id: u32, abbrev_id: u32 },
     MissingEndBlock(u32),
-    AbbrevWidthTooSmall(usize),
+    AbbrevWidthTooSmall(u8),
     ReadBits(bits::Error),
     Other(&'static str),
 }
@@ -149,8 +149,20 @@ impl BitStreamReader {
         }
         let op_type = cursor.read(3)?;
         Ok(match op_type {
-            1 => Operand::Scalar(ScalarOperand::Fixed(cursor.read_vbr(5)? as u8)),
-            2 => Operand::Scalar(ScalarOperand::Vbr(cursor.read_vbr(5)? as u8)),
+            1 => {
+                let width = cursor.read_vbr(5)?;
+                if width < 1 || width > 32 {
+                    return Err(Error::AbbrevWidthTooSmall(width as u8));
+                }
+                Operand::Scalar(ScalarOperand::Fixed(width as u8))
+            }
+            2 => {
+                let width = cursor.read_vbr(5)?;
+                if width < 1 || width > 32 {
+                    return Err(Error::AbbrevWidthTooSmall(width as u8));
+                }
+                Operand::Scalar(ScalarOperand::Vbr(width as u8))
+            }
             3 if *num_ops_left == 1 => {
                 let op = Self::read_abbrev_op(cursor, num_ops_left)?;
                 if let Operand::Scalar(op) = op {
