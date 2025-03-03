@@ -17,7 +17,7 @@ const LLVM_BITCODE_WRAPPER_MAGIC: u32 = 0x0B17C0DE;
 pub struct Bitcode {
     pub signature: Signature,
     pub elements: Vec<BitcodeElement>,
-    pub block_info: HashMap<u64, BlockInfo>,
+    pub block_info: HashMap<u32, BlockInfo>,
 }
 
 /// Blocks in a bitstream denote nested regions of the stream,
@@ -29,7 +29,7 @@ pub struct Bitcode {
 #[derive(Debug, Clone)]
 pub struct Block {
     /// Block ID
-    pub id: u64,
+    pub id: u32,
     /// Block elements
     pub elements: Vec<BitcodeElement>,
 }
