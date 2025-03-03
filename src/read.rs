@@ -18,9 +18,9 @@ pub enum Error {
     NestedBlockInBlockInfo,
     MissingSetBid,
     InvalidBlockInfoRecord(u64),
+    NoSuchAbbrev { block_id: u32, abbrev_id: u32 },
+    MissingEndBlock(u32),
     AbbrevWidthTooSmall(usize),
-    NoSuchAbbrev { block_id: u64, abbrev_id: usize },
-    MissingEndBlock(u64),
     ReadBits(bits::Error),
     Other(&'static str),
 }
@@ -79,7 +79,7 @@ pub enum BlockItem<'cursor, 'input> {
 #[derive(Debug)]
 pub struct BlockIter<'global_state, 'input> {
     /// ID of the block being iterated
-    pub id: u64,
+    pub id: u32,
     cursor: Cursor<'input>,
     abbrev_width: u8,
     /// Abbreviations defined in this block
@@ -92,13 +92,13 @@ pub struct BlockIter<'global_state, 'input> {
 #[derive(Debug, Clone)]
 pub struct BitStreamReader {
     /// Block information
-    pub(crate) block_info: HashMap<u64, BlockInfo>,
-    global_abbrevs: HashMap<u64, Vec<Arc<Abbreviation>>>,
+    pub(crate) block_info: HashMap<u32, BlockInfo>,
+    global_abbrevs: HashMap<u32, Vec<Arc<Abbreviation>>>,
 }
 
 impl BitStreamReader {
     /// Top level fake block ID
-    pub const TOP_LEVEL_BLOCK_ID: u64 = u64::MAX;
+    pub const TOP_LEVEL_BLOCK_ID: u32 = u32::MAX;
 
     #[must_use]
     pub fn new() -> Self {
@@ -198,12 +198,12 @@ impl BitStreamReader {
     ) -> Result<(), Error> {
         use BuiltinAbbreviationId::*;
 
-        let mut current_block_id = None;
+        let mut current_block_id: Option<u32> = None;
         loop {
-            let abbrev_id = cursor.read(abbrev_width)?;
+            let abbrev_id = cursor.read(abbrev_width)? as u32;
             match BuiltinAbbreviationId::try_from(abbrev_id).map_err(|_| Error::NoSuchAbbrev {
                 block_id: 0,
-                abbrev_id: abbrev_id as usize,
+                abbrev_id,
             })? {
                 EndBlock => {
                     cursor.align32()?;
@@ -213,7 +213,7 @@ impl BitStreamReader {
                     return Err(Error::NestedBlockInBlockInfo);
                 }
                 DefineAbbreviation => {
-                    let block_id = current_block_id.ok_or(Error::MissingSetBid)?;
+                    let block_id = current_block_id.ok_or(Error::MissingSetBid)? as u32;
                     Self::define_abbrev(cursor, self.global_abbrevs.entry(block_id).or_default())?;
                 }
                 UnabbreviatedRecord => {
@@ -225,7 +225,7 @@ impl BitStreamReader {
                     match block {
                         BlockInfoCode::SetBid => {
                             let id = record
-                                .u64()
+                                .u32()
                                 .ok()
                                 .filter(|_| record.is_empty())
                                 .ok_or(Error::InvalidBlockInfoRecord(record.id))?;
@@ -258,7 +258,7 @@ impl BitStreamReader {
     pub fn read_block<V: BitStreamVisitor>(
         &mut self,
         cursor: Cursor<'_>,
-        block_id: u64,
+        block_id: u32,
         abbrev_width: u8,
         visitor: &mut V,
     ) -> Result<(), Error> {
@@ -280,7 +280,7 @@ impl<'global_state, 'input> BlockIter<'global_state, 'input> {
             };
         }
 
-        let abbrev_id = self.cursor.read(self.abbrev_width)?;
+        let abbrev_id = self.cursor.read(self.abbrev_width)? as u32;
 
         if let Ok(builtin_abbrev) = BuiltinAbbreviationId::try_from(abbrev_id) {
             use BuiltinAbbreviationId::*;
@@ -290,7 +290,7 @@ impl<'global_state, 'input> BlockIter<'global_state, 'input> {
                     Ok(None)
                 }
                 EnterSubBlock => {
-                    let block_id = self.cursor.read_vbr(8)?;
+                    let block_id = self.cursor.read_vbr(8)? as u32;
                     let new_abbrev_width = self.cursor.read_vbr(4)? as u8;
                     self.cursor.align32()?;
                     let block_length = self.cursor.read(32)? as usize * 4;
@@ -338,7 +338,7 @@ impl<'global_state, 'input> BlockIter<'global_state, 'input> {
 
             let abbrev = abbrev.ok_or(Error::NoSuchAbbrev {
                 block_id: self.id,
-                abbrev_id: abbrev_id as usize,
+                abbrev_id,
             })?;
 
             Ok(Some(BlockItem::Record(RecordIter::from_cursor_abbrev(
@@ -351,7 +351,7 @@ impl<'global_state, 'input> BlockIter<'global_state, 'input> {
     fn new(
         reader: &'global_state mut BitStreamReader,
         cursor: Cursor<'input>,
-        block_id: u64,
+        block_id: u32,
         abbrev_width: u8,
     ) -> Self {
         Self {

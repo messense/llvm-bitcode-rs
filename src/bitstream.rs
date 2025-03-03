@@ -105,7 +105,7 @@ pub enum BlockInfoCode {
 ///
 /// Bitstream reserves 4 special abbreviation IDs for its own bookkeeping.
 #[derive(Debug, Clone, Copy, TryFromPrimitive)]
-#[repr(u64)]
+#[repr(u32)]
 pub enum BuiltinAbbreviationId {
     /// Marks the end of the current block.
     EndBlock = 0,
