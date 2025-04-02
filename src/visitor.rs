@@ -10,18 +10,18 @@ pub trait BitStreamVisitor {
 
     /// Called when a new block is encountered. Return `true` to enter the block
     /// and read its contents, or `false` to skip it.
-    fn should_enter_block(&mut self, block_id: u64) -> bool;
+    fn should_enter_block(&mut self, block_id: u32) -> bool;
 
     /// Called when a block is exited.
-    fn did_exit_block(&mut self, block_id: u64);
+    fn did_exit_block(&mut self, block_id: u32);
 
     /// Called whenever a record is encountered.
-    fn visit(&mut self, block_id: u64, record: Record);
+    fn visit(&mut self, block_id: u32, record: Record);
 }
 
 /// A basic visitor that collects all the blocks and records in a stream.
 pub struct CollectingVisitor {
-    stack: Vec<(u64, Vec<BitcodeElement>)>,
+    stack: Vec<(u32, Vec<BitcodeElement>)>,
 }
 
 impl CollectingVisitor {
@@ -40,12 +40,12 @@ impl CollectingVisitor {
 }
 
 impl BitStreamVisitor for CollectingVisitor {
-    fn should_enter_block(&mut self, id: u64) -> bool {
+    fn should_enter_block(&mut self, id: u32) -> bool {
         self.stack.push((id, Vec::new()));
         true
     }
 
-    fn did_exit_block(&mut self, block_id: u64) {
+    fn did_exit_block(&mut self, block_id: u32) {
         if let Some((id, elements)) = self.stack.pop() {
             assert_eq!(id, block_id);
             let block = Block { id, elements };
@@ -54,7 +54,7 @@ impl BitStreamVisitor for CollectingVisitor {
         }
     }
 
-    fn visit(&mut self, _block_id: u64, record: Record) {
+    fn visit(&mut self, _block_id: u32, record: Record) {
         let last = self.stack.last_mut().unwrap();
         last.1.push(BitcodeElement::Record(record));
     }

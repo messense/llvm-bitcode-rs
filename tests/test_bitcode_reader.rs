@@ -44,16 +44,16 @@ fn test_bitstream_reader() {
     struct LoggingVisitor(Vec<String>);
 
     impl BitStreamVisitor for LoggingVisitor {
-        fn should_enter_block(&mut self, id: u64) -> bool {
+        fn should_enter_block(&mut self, id: u32) -> bool {
             self.0.push(format!("entering block: {id}"));
             true
         }
 
-        fn did_exit_block(&mut self, id: u64) {
+        fn did_exit_block(&mut self, id: u32) {
             self.0.push(format!("exiting block: {id}"));
         }
 
-        fn visit(&mut self, _block_id: u64, mut record: Record) {
+        fn visit(&mut self, _block_id: u32, mut record: Record) {
             let payload = if let Some(payload) = record.take_payload() {
                 match payload {
                     Payload::Array(ele) => format!("array({} elements)", ele.len()),
@@ -152,15 +152,15 @@ fn test_block_skip() {
     struct No15(usize);
 
     impl BitStreamVisitor for No15 {
-        fn should_enter_block(&mut self, id: u64) -> bool {
+        fn should_enter_block(&mut self, id: u32) -> bool {
             id != 15
         }
 
-        fn did_exit_block(&mut self, id: u64) {
+        fn did_exit_block(&mut self, id: u32) {
             assert_ne!(15, id);
         }
 
-        fn visit(&mut self, block_id: u64, _: Record) {
+        fn visit(&mut self, block_id: u32, _: Record) {
             assert_ne!(15, block_id);
             self.0 += 1;
         }
