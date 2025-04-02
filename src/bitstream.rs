@@ -69,7 +69,7 @@ impl Operand {
     /// The `llvm::BitCodeAbbrevOp::Encoding` value this
     /// enum case represents.
     /// - note: Must match the encoding in
-    ///         <http://llvm.org/docs/BitCodeFormat.html#define-abbrev-encoding>
+    ///   <http://llvm.org/docs/BitCodeFormat.html#define-abbrev-encoding>
     #[must_use]
     pub fn encoded_kind(&self) -> u8 {
         match self {
