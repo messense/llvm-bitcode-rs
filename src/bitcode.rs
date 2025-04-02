@@ -1,7 +1,9 @@
 use crate::bits::Cursor;
 use crate::bitstream::{Abbreviation, Operand};
 use crate::bitstream::{PayloadOperand, ScalarOperand};
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::fmt;
 use std::num::NonZero;
 use std::ops::Range;
 use std::sync::Arc;
@@ -65,7 +67,7 @@ impl Record {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum Ops {
     Abbrev {
         /// If under `abbrev.fields.len()`, then it's the next op to read
@@ -81,7 +83,6 @@ enum Ops {
 /// Data records consist of a record code and a number of (up to) 64-bit integer values
 ///
 /// The interpretation of the code and values is application specific and may vary between different block types.
-#[derive(Debug)]
 pub struct RecordIter<'cursor, 'input> {
     /// Record code
     pub id: u64,
@@ -400,6 +401,18 @@ impl<'cursor, 'input> RecordIter<'cursor, 'input> {
             Ops::Full(_) => None,
         }
     }
+
+    /// For debug printing
+    fn from_cloned_cursor<'new_cursor>(
+        &self,
+        cursor: &'new_cursor mut Cursor<'input>,
+    ) -> RecordIter<'new_cursor, 'input> {
+        RecordIter {
+            id: self.id,
+            ops: self.ops.clone(),
+            cursor,
+        }
+    }
 }
 
 impl Iterator for RecordIter<'_, '_> {
@@ -417,6 +430,44 @@ impl Drop for RecordIter<'_, '_> {
             if abbrev.payload.is_some() {
                 let _ = self.payload();
             }
+        }
+    }
+}
+
+struct RecordIterDebugFields<'c, 'i>(RefCell<RecordIter<'c, 'i>>);
+struct RecordIterDebugResult<T, E>(Result<T, E>);
+
+impl fmt::Debug for RecordIter<'_, '_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut c = self.cursor.clone();
+        let fields = RecordIterDebugFields(RefCell::new(self.from_cloned_cursor(&mut c)));
+
+        f.debug_struct("RecordIter")
+            .field("id", &self.id)
+            .field("fields", &fields)
+            .field("ops", &self.ops)
+            .field("cursor", &self.cursor)
+            .finish()
+    }
+}
+
+impl fmt::Debug for RecordIterDebugFields<'_, '_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut iter = self.0.borrow_mut();
+        let mut d = f.debug_list();
+        d.entries(iter.by_ref().map(RecordIterDebugResult));
+        if let Some(p) = iter.payload().transpose() {
+            d.entries([RecordIterDebugResult(p)]);
+        }
+        d.finish()
+    }
+}
+
+impl<T: fmt::Debug, E: fmt::Debug> fmt::Debug for RecordIterDebugResult<T, E> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.0 {
+            Ok(t) => t.fmt(f),
+            Err(e) => e.fmt(f),
         }
     }
 }
