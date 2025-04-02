@@ -239,45 +239,69 @@ pub struct BlockInfo {
 
 /// aka. Magic number
 #[derive(Debug, Clone, Copy, Ord, PartialOrd, Eq, PartialEq)]
-pub struct Signature(u32);
+pub struct Signature {
+    pub magic: u32,
+    pub magic2: u32,
+    pub version: u32,
+    pub offset: u32,
+    pub size: u32,
+    pub cpu_type: u32,
+}
 
 impl Signature {
     #[must_use]
-    pub fn new(val: u32) -> Self {
-        Self(val)
-    }
-
-    #[must_use]
-    pub fn into_inner(self) -> u32 {
-        self.0
-    }
-}
-
-impl Bitcode {
-    fn clean(data: &[u8]) -> Option<(Signature, &[u8])> {
+    pub fn parse(data: &[u8]) -> Option<(Self, &[u8])> {
         let (signature, remaining_data) = data.split_first_chunk::<4>()?;
-        let signature = u32::from_le_bytes(*signature);
-        if signature != LLVM_BITCODE_WRAPPER_MAGIC {
-            Some((Signature(signature), remaining_data))
+        let magic = u32::from_le_bytes(*signature);
+        if magic != LLVM_BITCODE_WRAPPER_MAGIC {
+            Some((
+                Signature {
+                    version: 0,
+                    magic,
+                    magic2: 0,
+                    offset: 4,
+                    size: remaining_data.len() as _,
+                    cpu_type: 0,
+                },
+                remaining_data,
+            ))
         } else {
             // It is a LLVM Bitcode wrapper, remove wrapper header
             if data.len() < 20 {
                 return None;
             }
-            let offset = u32::from_le_bytes(data[8..12].try_into().unwrap()) as usize;
-            let size = u32::from_le_bytes(data[12..16].try_into().unwrap()) as usize;
-            let data = data.get(offset..offset + size)?;
-            let (signature, remaining_data) = data.split_first_chunk::<4>()?;
-            let signature = u32::from_le_bytes(*signature);
-            Some((Signature(signature), remaining_data))
+            let mut words = data
+                .chunks_exact(4)
+                .skip(1)
+                .map(|w| u32::from_le_bytes(w.try_into().unwrap()));
+            let version = words.next()?;
+            let offset = words.next()?;
+            let size = words.next()?;
+            let cpu_id = words.next()?;
+            let data = data.get(offset as usize..offset as usize + size as usize)?;
+            let (magic2, remaining_data) = data.split_first_chunk::<4>()?;
+            let magic2 = u32::from_le_bytes(*magic2);
+            Some((
+                Signature {
+                    version,
+                    magic,
+                    magic2,
+                    offset,
+                    size,
+                    cpu_type: cpu_id,
+                },
+                remaining_data,
+            ))
         }
     }
+}
 
+impl Bitcode {
     /// Parse bitcode from bytes
     ///
     /// Accepts both LLVM bitcode and bitcode wrapper formats
     pub fn new(data: &[u8]) -> Result<Self, Error> {
-        let (signature, stream) = Self::clean(data).ok_or(Error::InvalidSignature(0))?;
+        let (signature, stream) = Signature::parse(data).ok_or(Error::InvalidSignature(0))?;
         let mut reader = BitStreamReader::new();
         let mut visitor = CollectingVisitor::new();
         reader.read_block(
@@ -300,9 +324,9 @@ impl Bitcode {
     where
         V: BitStreamVisitor,
     {
-        let (signature, stream) = Self::clean(data).ok_or(Error::InvalidSignature(0))?;
-        if !visitor.validate(signature) {
-            return Err(Error::InvalidSignature(signature.into_inner()));
+        let (header, stream) = Signature::parse(data).ok_or(Error::InvalidSignature(0))?;
+        if !visitor.validate(header) {
+            return Err(Error::InvalidSignature(header.magic));
         }
         let mut reader = BitStreamReader::new();
         reader.read_block(

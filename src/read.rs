@@ -17,6 +17,7 @@ pub enum Error {
     NoSuchAbbrev { block_id: u64, abbrev_id: usize },
     MissingEndBlock(u64),
     ReadBits(bits::Error),
+    Other(&'static str),
 }
 
 impl fmt::Display for Error {
@@ -43,6 +44,7 @@ impl fmt::Display for Error {
             ),
             Self::MissingEndBlock(block_id) => write!(f, "missing end block for `{block_id}`"),
             Self::ReadBits(err) => err.fmt(f),
+            Self::Other(err) => err.fmt(f),
         }
     }
 }
