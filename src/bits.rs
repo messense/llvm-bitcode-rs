@@ -25,20 +25,6 @@ pub struct Cursor<'input> {
     offset: usize,
 }
 
-impl fmt::Debug for Cursor<'_> {
-    /// Debug-print only the accessible part of the internal buffer
-    #[cold]
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let byte_offset = self.offset / 8;
-        let bit_offset = self.offset % 8;
-        let buffer = self.buffer.get(byte_offset..).unwrap_or_default();
-        f.debug_struct("Cursor")
-            .field("buffer", &buffer)
-            .field("offset", &bit_offset)
-            .finish()
-    }
-}
-
 impl<'input> Cursor<'input> {
     #[must_use]
     pub fn new(buffer: &'input [u8]) -> Self {
@@ -167,6 +153,37 @@ impl<'input> Cursor<'input> {
     #[must_use]
     pub fn unconsumed_bit_len(&self) -> usize {
         (self.buffer.len() << 3) - self.offset
+    }
+}
+
+struct CursorDebugBytes<'a>(&'a [u8]);
+
+impl fmt::Debug for CursorDebugBytes<'_> {
+    #[cold]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("[0x")?;
+        for &b in self.0.iter().take(200) {
+            write!(f, "{b:02x}")?;
+        }
+        if self.0.len() > 200 {
+            f.write_str("...")?;
+        }
+        write!(f, "; {}]", self.0.len())
+    }
+}
+
+impl fmt::Debug for Cursor<'_> {
+    /// Debug-print only the accessible part of the internal buffer
+    #[cold]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let byte_offset = self.offset / 8;
+        let bit_offset = self.offset % 8;
+        let buffer = CursorDebugBytes(self.buffer.get(byte_offset..).unwrap_or_default());
+        f.debug_struct("Cursor")
+            .field("offset", &bit_offset)
+            .field("buffer", &buffer)
+            .field("nextvbr6", &self.peek(6).ok())
+            .finish()
     }
 }
 
