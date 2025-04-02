@@ -199,7 +199,12 @@ impl BitStreamReader {
                 op => return Err(Error::UnexpectedOperand(Some(op))),
             }
         }
-        let abbrev = Arc::new(Abbreviation { fields, payload });
+        let id = abbrevs.len() as u32;
+        let abbrev = Arc::new(Abbreviation {
+            id,
+            fields,
+            payload,
+        });
         abbrevs.push(abbrev);
         Ok(())
     }
@@ -370,6 +375,25 @@ impl<'global_state, 'input> BlockIter<'global_state, 'input> {
                 abbrev,
             )?)))
         }
+    }
+
+    /// Bit width of abbreviation IDs in this block.
+    ///
+    /// This is an implementation detail,
+    /// intended only for debugging or data dumps.
+    #[must_use]
+    pub fn debug_abbrev_width(&self) -> u8 {
+        self.abbrev_width
+    }
+
+    /// Valid only before any record or subblock has been read. This is the block size in bytes.
+    ///
+    /// This is an implementation detail,
+    /// intended only for debugging or data dumps.
+    #[must_use]
+    pub fn debug_data_len(&self) -> Option<usize> {
+        let bits = self.cursor.unconsumed_bit_len();
+        (bits & 31 != 0).then_some(bits >> 3)
     }
 
     fn new(

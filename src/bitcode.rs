@@ -145,7 +145,7 @@ impl<'cursor, 'input> RecordIter<'cursor, 'input> {
         })
     }
 
-    fn payload(&mut self) -> Result<Option<Payload>, Error> {
+    pub fn payload(&mut self) -> Result<Option<Payload>, Error> {
         match &mut self.ops {
             Ops::Abbrev { state, abbrev } => {
                 if *state > abbrev.fields.len() {
@@ -388,6 +388,18 @@ impl<'cursor, 'input> RecordIter<'cursor, 'input> {
             s.push(b.get() as char);
         }
         Ok(s)
+    }
+
+    /// Internal ID of this record's abbreviation, if any.
+    ///
+    /// This is intended only for debugging and data dumps.
+    /// This isn't a stable identifier, and may be block-specific.
+    #[must_use]
+    pub fn debug_abbrev_id(&self) -> Option<u32> {
+        match &self.ops {
+            Ops::Abbrev { abbrev, .. } => Some(abbrev.id),
+            Ops::Full(_) => None,
+        }
     }
 
     /// For debug printing

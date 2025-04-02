@@ -148,6 +148,12 @@ impl<'input> Cursor<'input> {
         self.offset = 0;
         Ok(())
     }
+
+    /// Maximum number of bits that can be read
+    #[must_use]
+    pub fn unconsumed_bit_len(&self) -> usize {
+        (self.buffer.len() << 3) - self.offset
+    }
 }
 
 struct CursorDebugBytes<'a>(&'a [u8]);

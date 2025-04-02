@@ -8,6 +8,7 @@ pub struct Abbreviation {
     /// All operands except the last that may be an array/string/blob
     pub fields: Vec<ScalarOperand>,
     pub payload: Option<PayloadOperand>,
+    pub id: u32,
 }
 
 /// Abbreviation operand
