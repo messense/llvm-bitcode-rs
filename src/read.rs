@@ -18,9 +18,10 @@ pub enum Error {
     NestedBlockInBlockInfo,
     MissingSetBid,
     InvalidBlockInfoRecord(u64),
-    AbbrevWidthTooSmall(usize),
-    NoSuchAbbrev { block_id: u64, abbrev_id: usize },
-    MissingEndBlock(u64),
+    NoSuchAbbrev { block_id: u32, abbrev_id: u32 },
+    UnexpectedBlock(u32),
+    MissingEndBlock(u32),
+    AbbrevWidthTooSmall(u8),
     ReadBits(bits::Error),
     Other(&'static str),
 }
@@ -36,6 +37,7 @@ impl fmt::Display for Error {
             }
             Self::InvalidAbbrev => write!(f, "invalid abbreviation"),
             Self::NestedBlockInBlockInfo => write!(f, "nested block in block info"),
+            Self::UnexpectedBlock(id) => write!(f, "nested block {id}"),
             Self::MissingSetBid => write!(f, "missing SETBID"),
             Self::InvalidBlockInfoRecord(record_id) => {
                 write!(f, "invalid block info record `{record_id}`")
@@ -79,7 +81,7 @@ pub enum BlockItem<'cursor, 'input> {
 #[derive(Debug)]
 pub struct BlockIter<'global_state, 'input> {
     /// ID of the block being iterated
-    pub id: u64,
+    pub id: u32,
     cursor: Cursor<'input>,
     abbrev_width: u8,
     /// Abbreviations defined in this block
@@ -92,13 +94,13 @@ pub struct BlockIter<'global_state, 'input> {
 #[derive(Debug, Clone)]
 pub struct BitStreamReader {
     /// Block information
-    pub(crate) block_info: HashMap<u64, BlockInfo>,
-    global_abbrevs: HashMap<u64, Vec<Arc<Abbreviation>>>,
+    pub(crate) block_info: HashMap<u32, BlockInfo>,
+    global_abbrevs: HashMap<u32, Vec<Arc<Abbreviation>>>,
 }
 
 impl BitStreamReader {
     /// Top level fake block ID
-    pub const TOP_LEVEL_BLOCK_ID: u64 = u64::MAX;
+    pub const TOP_LEVEL_BLOCK_ID: u32 = u32::MAX;
 
     #[must_use]
     pub fn new() -> Self {
@@ -149,8 +151,20 @@ impl BitStreamReader {
         }
         let op_type = cursor.read(3)?;
         Ok(match op_type {
-            1 => Operand::Scalar(ScalarOperand::Fixed(cursor.read_vbr(5)? as u8)),
-            2 => Operand::Scalar(ScalarOperand::Vbr(cursor.read_vbr(5)? as u8)),
+            1 => {
+                let width = cursor.read_vbr(5)?;
+                if width < 1 || width > 32 {
+                    return Err(Error::AbbrevWidthTooSmall(width as u8));
+                }
+                Operand::Scalar(ScalarOperand::Fixed(width as u8))
+            }
+            2 => {
+                let width = cursor.read_vbr(5)?;
+                if width < 1 || width > 32 {
+                    return Err(Error::AbbrevWidthTooSmall(width as u8));
+                }
+                Operand::Scalar(ScalarOperand::Vbr(width as u8))
+            }
             3 if *num_ops_left == 1 => {
                 let op = Self::read_abbrev_op(cursor, num_ops_left)?;
                 if let Operand::Scalar(op) = op {
@@ -185,7 +199,12 @@ impl BitStreamReader {
                 op => return Err(Error::UnexpectedOperand(Some(op))),
             }
         }
-        let abbrev = Arc::new(Abbreviation { fields, payload });
+        let id = abbrevs.len() as u32;
+        let abbrev = Arc::new(Abbreviation {
+            id,
+            fields,
+            payload,
+        });
         abbrevs.push(abbrev);
         Ok(())
     }
@@ -198,12 +217,12 @@ impl BitStreamReader {
     ) -> Result<(), Error> {
         use BuiltinAbbreviationId::*;
 
-        let mut current_block_id = None;
+        let mut current_block_id: Option<u32> = None;
         loop {
-            let abbrev_id = cursor.read(abbrev_width)?;
+            let abbrev_id = cursor.read(abbrev_width)? as u32;
             match BuiltinAbbreviationId::try_from(abbrev_id).map_err(|_| Error::NoSuchAbbrev {
                 block_id: 0,
-                abbrev_id: abbrev_id as usize,
+                abbrev_id,
             })? {
                 EndBlock => {
                     cursor.align32()?;
@@ -213,7 +232,7 @@ impl BitStreamReader {
                     return Err(Error::NestedBlockInBlockInfo);
                 }
                 DefineAbbreviation => {
-                    let block_id = current_block_id.ok_or(Error::MissingSetBid)?;
+                    let block_id = current_block_id.ok_or(Error::MissingSetBid)? as u32;
                     Self::define_abbrev(cursor, self.global_abbrevs.entry(block_id).or_default())?;
                 }
                 UnabbreviatedRecord => {
@@ -225,7 +244,7 @@ impl BitStreamReader {
                     match block {
                         BlockInfoCode::SetBid => {
                             let id = record
-                                .u64()
+                                .u32()
                                 .ok()
                                 .filter(|_| record.is_empty())
                                 .ok_or(Error::InvalidBlockInfoRecord(record.id))?;
@@ -258,7 +277,7 @@ impl BitStreamReader {
     pub fn read_block<V: BitStreamVisitor>(
         &mut self,
         cursor: Cursor<'_>,
-        block_id: u64,
+        block_id: u32,
         abbrev_width: u8,
         visitor: &mut V,
     ) -> Result<(), Error> {
@@ -270,6 +289,16 @@ impl BitStreamReader {
 }
 
 impl<'global_state, 'input> BlockIter<'global_state, 'input> {
+    pub fn next_record<'parent>(
+        &'parent mut self,
+    ) -> Result<Option<RecordIter<'parent, 'input>>, Error> {
+        match self.next()? {
+            None => Ok(None),
+            Some(BlockItem::Record(rec)) => Ok(Some(rec)),
+            Some(BlockItem::Block(block)) => Err(Error::UnexpectedBlock(block.id)),
+        }
+    }
+
     /// Returns the next item (block or record) in this block
     pub fn next<'parent>(&'parent mut self) -> Result<Option<BlockItem<'parent, 'input>>, Error> {
         if self.cursor.is_at_end() {
@@ -280,7 +309,7 @@ impl<'global_state, 'input> BlockIter<'global_state, 'input> {
             };
         }
 
-        let abbrev_id = self.cursor.read(self.abbrev_width)?;
+        let abbrev_id = self.cursor.read(self.abbrev_width)? as u32;
 
         if let Ok(builtin_abbrev) = BuiltinAbbreviationId::try_from(abbrev_id) {
             use BuiltinAbbreviationId::*;
@@ -290,7 +319,7 @@ impl<'global_state, 'input> BlockIter<'global_state, 'input> {
                     Ok(None)
                 }
                 EnterSubBlock => {
-                    let block_id = self.cursor.read_vbr(8)?;
+                    let block_id = self.cursor.read_vbr(8)? as u32;
                     let new_abbrev_width = self.cursor.read_vbr(4)? as u8;
                     self.cursor.align32()?;
                     let block_length = self.cursor.read(32)? as usize * 4;
@@ -338,7 +367,7 @@ impl<'global_state, 'input> BlockIter<'global_state, 'input> {
 
             let abbrev = abbrev.ok_or(Error::NoSuchAbbrev {
                 block_id: self.id,
-                abbrev_id: abbrev_id as usize,
+                abbrev_id,
             })?;
 
             Ok(Some(BlockItem::Record(RecordIter::from_cursor_abbrev(
@@ -348,10 +377,29 @@ impl<'global_state, 'input> BlockIter<'global_state, 'input> {
         }
     }
 
+    /// Bit width of abbreviation IDs in this block.
+    ///
+    /// This is an implementation detail,
+    /// intended only for debugging or data dumps.
+    #[must_use]
+    pub fn debug_abbrev_width(&self) -> u8 {
+        self.abbrev_width
+    }
+
+    /// Valid only before any record or subblock has been read. This is the block size in bytes.
+    ///
+    /// This is an implementation detail,
+    /// intended only for debugging or data dumps.
+    #[must_use]
+    pub fn debug_data_len(&self) -> Option<usize> {
+        let bits = self.cursor.unconsumed_bit_len();
+        (bits & 31 != 0).then_some(bits >> 3)
+    }
+
     fn new(
         reader: &'global_state mut BitStreamReader,
         cursor: Cursor<'input>,
-        block_id: u64,
+        block_id: u32,
         abbrev_width: u8,
     ) -> Self {
         Self {

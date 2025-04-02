@@ -25,20 +25,6 @@ pub struct Cursor<'input> {
     offset: usize,
 }
 
-impl fmt::Debug for Cursor<'_> {
-    /// Debug-print only the accessible part of the internal buffer
-    #[cold]
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let byte_offset = self.offset / 8;
-        let bit_offset = self.offset % 8;
-        let buffer = self.buffer.get(byte_offset..).unwrap_or_default();
-        f.debug_struct("Cursor")
-            .field("buffer", &buffer)
-            .field("offset", &bit_offset)
-            .finish()
-    }
-}
-
 impl<'input> Cursor<'input> {
     #[must_use]
     pub fn new(buffer: &'input [u8]) -> Self {
@@ -57,6 +43,9 @@ impl<'input> Cursor<'input> {
 
     #[inline]
     pub fn read(&mut self, bits: u8) -> Result<u64, Error> {
+        if bits < 1 || bits > 64 {
+            return Err(Error::VbrOverflow);
+        }
         let res = self.peek(bits)?;
         self.offset += bits as usize;
         Ok(res)
@@ -122,7 +111,8 @@ impl<'input> Cursor<'input> {
     /// The number may be up to 64-bit long regardless of the `width`.
     #[inline]
     pub fn read_vbr(&mut self, width: u8) -> Result<u64, Error> {
-        if width < 1 || width > 64 {
+        if width < 1 || width > 32 {
+            // This is `MaxChunkSize` in LLVM
             return Err(Error::VbrOverflow);
         }
         let test_bit = 1u64 << (width - 1);
@@ -158,6 +148,43 @@ impl<'input> Cursor<'input> {
         self.offset = 0;
         Ok(())
     }
+
+    /// Maximum number of bits that can be read
+    #[must_use]
+    pub fn unconsumed_bit_len(&self) -> usize {
+        (self.buffer.len() << 3) - self.offset
+    }
+}
+
+struct CursorDebugBytes<'a>(&'a [u8]);
+
+impl fmt::Debug for CursorDebugBytes<'_> {
+    #[cold]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("[0x")?;
+        for &b in self.0.iter().take(200) {
+            write!(f, "{b:02x}")?;
+        }
+        if self.0.len() > 200 {
+            f.write_str("...")?;
+        }
+        write!(f, "; {}]", self.0.len())
+    }
+}
+
+impl fmt::Debug for Cursor<'_> {
+    /// Debug-print only the accessible part of the internal buffer
+    #[cold]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let byte_offset = self.offset / 8;
+        let bit_offset = self.offset % 8;
+        let buffer = CursorDebugBytes(self.buffer.get(byte_offset..).unwrap_or_default());
+        f.debug_struct("Cursor")
+            .field("offset", &bit_offset)
+            .field("buffer", &buffer)
+            .field("nextvbr6", &self.peek(6).ok())
+            .finish()
+    }
 }
 
 #[test]
@@ -192,7 +219,7 @@ fn test_cursor_bits() {
     assert_eq!(0b1_0000_0000, c.peek(9).unwrap());
 
     assert_eq!(0, c.peek(7).unwrap());
-    assert_eq!(0, c.read(0).unwrap());
+    assert!(c.read(0).is_err());
     assert_eq!(0, c.read(1).unwrap());
     assert_eq!(0, c.read(2).unwrap());
     assert_eq!(0, c.read(3).unwrap());
@@ -205,7 +232,7 @@ fn test_cursor_bits() {
     c.align32().unwrap();
     let mut d = c.take_slice(6).unwrap();
     assert_eq!(0x51, c.read(8).unwrap());
-    assert_eq!(0, d.read(0).unwrap());
+    assert!(d.read(0).is_err());
     assert_eq!(0, d.read(1).unwrap());
     assert_eq!(0, d.read(2).unwrap());
     assert_eq!(1, d.read(3).unwrap());
@@ -216,7 +243,7 @@ fn test_cursor_bits() {
     assert_eq!(31, d.read(8).unwrap());
     assert!(d.read(63).is_err());
     assert_eq!(496, d.read(9).unwrap());
-    assert_eq!(0, d.read(0).unwrap());
+    assert!(d.read(0).is_err());
     assert_eq!(1, d.read(1).unwrap());
     assert!(d.align32().is_err());
     assert_eq!(1, d.read(2).unwrap());

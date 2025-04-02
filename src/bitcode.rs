@@ -1,7 +1,9 @@
 use crate::bits::Cursor;
 use crate::bitstream::{Abbreviation, Operand};
 use crate::bitstream::{PayloadOperand, ScalarOperand};
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::fmt;
 use std::num::NonZero;
 use std::ops::Range;
 use std::sync::Arc;
@@ -17,7 +19,7 @@ const LLVM_BITCODE_WRAPPER_MAGIC: u32 = 0x0B17C0DE;
 pub struct Bitcode {
     pub signature: Signature,
     pub elements: Vec<BitcodeElement>,
-    pub block_info: HashMap<u64, BlockInfo>,
+    pub block_info: HashMap<u32, BlockInfo>,
 }
 
 /// Blocks in a bitstream denote nested regions of the stream,
@@ -29,7 +31,7 @@ pub struct Bitcode {
 #[derive(Debug, Clone)]
 pub struct Block {
     /// Block ID
-    pub id: u64,
+    pub id: u32,
     /// Block elements
     pub elements: Vec<BitcodeElement>,
 }
@@ -65,7 +67,7 @@ impl Record {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum Ops {
     Abbrev {
         /// If under `abbrev.fields.len()`, then it's the next op to read
@@ -81,7 +83,6 @@ enum Ops {
 /// Data records consist of a record code and a number of (up to) 64-bit integer values
 ///
 /// The interpretation of the code and values is application specific and may vary between different block types.
-#[derive(Debug)]
 pub struct RecordIter<'cursor, 'input> {
     /// Record code
     pub id: u64,
@@ -144,7 +145,7 @@ impl<'cursor, 'input> RecordIter<'cursor, 'input> {
         })
     }
 
-    fn payload(&mut self) -> Result<Option<Payload>, Error> {
+    pub fn payload(&mut self) -> Result<Option<Payload>, Error> {
         match &mut self.ops {
             Ops::Abbrev { state, abbrev } => {
                 if *state > abbrev.fields.len() {
@@ -229,6 +230,11 @@ impl<'cursor, 'input> RecordIter<'cursor, 'input> {
 
     pub fn u8(&mut self) -> Result<u8, Error> {
         self.u64()?.try_into().map_err(|_| Error::ValueOverflow)
+    }
+
+    pub fn try_from<U: TryFrom<u64>, T: TryFrom<U>>(&mut self) -> Result<T, Error> {
+        T::try_from(self.u64()?.try_into().map_err(|_| Error::ValueOverflow)?)
+            .map_err(|_| Error::ValueOverflow)
     }
 
     pub fn nzu8(&mut self) -> Result<Option<NonZero<u8>>, Error> {
@@ -383,6 +389,30 @@ impl<'cursor, 'input> RecordIter<'cursor, 'input> {
         }
         Ok(s)
     }
+
+    /// Internal ID of this record's abbreviation, if any.
+    ///
+    /// This is intended only for debugging and data dumps.
+    /// This isn't a stable identifier, and may be block-specific.
+    #[must_use]
+    pub fn debug_abbrev_id(&self) -> Option<u32> {
+        match &self.ops {
+            Ops::Abbrev { abbrev, .. } => Some(abbrev.id),
+            Ops::Full(_) => None,
+        }
+    }
+
+    /// For debug printing
+    fn from_cloned_cursor<'new_cursor>(
+        &self,
+        cursor: &'new_cursor mut Cursor<'input>,
+    ) -> RecordIter<'new_cursor, 'input> {
+        RecordIter {
+            id: self.id,
+            ops: self.ops.clone(),
+            cursor,
+        }
+    }
 }
 
 impl Iterator for RecordIter<'_, '_> {
@@ -400,6 +430,44 @@ impl Drop for RecordIter<'_, '_> {
             if abbrev.payload.is_some() {
                 let _ = self.payload();
             }
+        }
+    }
+}
+
+struct RecordIterDebugFields<'c, 'i>(RefCell<RecordIter<'c, 'i>>);
+struct RecordIterDebugResult<T, E>(Result<T, E>);
+
+impl fmt::Debug for RecordIter<'_, '_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut c = self.cursor.clone();
+        let fields = RecordIterDebugFields(RefCell::new(self.from_cloned_cursor(&mut c)));
+
+        f.debug_struct("RecordIter")
+            .field("id", &self.id)
+            .field("fields", &fields)
+            .field("ops", &self.ops)
+            .field("cursor", &self.cursor)
+            .finish()
+    }
+}
+
+impl fmt::Debug for RecordIterDebugFields<'_, '_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut iter = self.0.borrow_mut();
+        let mut d = f.debug_list();
+        d.entries(iter.by_ref().map(RecordIterDebugResult));
+        if let Some(p) = iter.payload().transpose() {
+            d.entries([RecordIterDebugResult(p)]);
+        }
+        d.finish()
+    }
+}
+
+impl<T: fmt::Debug, E: fmt::Debug> fmt::Debug for RecordIterDebugResult<T, E> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.0 {
+            Ok(t) => t.fmt(f),
+            Err(e) => e.fmt(f),
         }
     }
 }
