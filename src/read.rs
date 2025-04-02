@@ -201,9 +201,9 @@ impl BitStreamReader {
         }
         let id = abbrevs.len() as u32;
         let abbrev = Arc::new(Abbreviation {
-            id,
             fields,
             payload,
+            id,
         });
         abbrevs.push(abbrev);
         Ok(())
@@ -232,7 +232,7 @@ impl BitStreamReader {
                     return Err(Error::NestedBlockInBlockInfo);
                 }
                 DefineAbbreviation => {
-                    let block_id = current_block_id.ok_or(Error::MissingSetBid)? as u32;
+                    let block_id = current_block_id.ok_or(Error::MissingSetBid)?;
                     Self::define_abbrev(cursor, self.global_abbrevs.entry(block_id).or_default())?;
                 }
                 UnabbreviatedRecord => {

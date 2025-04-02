@@ -556,7 +556,7 @@ impl Signature {
         let magic = u32::from_le_bytes(*signature);
         if magic != LLVM_BITCODE_WRAPPER_MAGIC {
             Some((
-                Signature {
+                Self {
                     version: 0,
                     magic,
                     magic2: 0,
@@ -583,7 +583,7 @@ impl Signature {
             let (magic2, remaining_data) = data.split_first_chunk::<4>()?;
             let magic2 = u32::from_le_bytes(*magic2);
             Some((
-                Signature {
+                Self {
                     version,
                     magic,
                     magic2,
