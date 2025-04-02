@@ -10,6 +10,14 @@ pub mod read;
 /// Bitstream visitor
 pub mod visitor;
 
+/// Definitions from `LLVMBitCodes.h`
+pub mod schema {
+    /// IDs of blocks and records inside the blocks
+    pub mod blocks;
+    /// Flags and values found in records
+    pub mod values;
+}
+
 pub use self::bitcode::Bitcode;
 pub use self::bits::Cursor;
 pub use self::read::BitStreamReader;

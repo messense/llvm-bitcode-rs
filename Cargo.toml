@@ -6,7 +6,7 @@ description = "LLVM Bitcode parser in Rust"
 edition = "2021"
 keywords = ["llvm", "bitcode"]
 readme = "README.md"
-license = "MIT"
+license = "MIT AND Apache-2.0 WITH LLVM-exception"
 repository = "https://github.com/messense/llvm-bitcode-rs.git"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
