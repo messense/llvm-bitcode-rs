@@ -14,6 +14,8 @@ pub mod visitor;
 pub mod schema {
     /// IDs of blocks and records inside the blocks
     pub mod blocks;
+    /// WIP
+    pub mod records;
     /// Flags and values found in records
     pub mod values;
 }

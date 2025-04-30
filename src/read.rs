@@ -1,7 +1,9 @@
 use crate::bitstream::{PayloadOperand, ScalarOperand};
+use std::collections::HashMap;
+use std::convert::TryFrom;
 use std::string::FromUtf8Error;
 use std::sync::Arc;
-use std::{collections::HashMap, convert::TryFrom, error, fmt};
+use std::{error, fmt};
 
 use crate::bitcode::{BlockInfo, RecordIter};
 use crate::bits::{self, Cursor};
@@ -21,6 +23,7 @@ pub enum Error {
     InvalidBlockInfoRecord(u64),
     NoSuchAbbrev { block_id: u32, abbrev_id: u32 },
     UnexpectedBlock(u32),
+    UnexpectedRecord { block_id: u32, record_id: u64 },
     MissingEndBlock(u32),
     AbbrevWidthTooSmall(u8),
     ReadBits(bits::Error),
@@ -38,10 +41,12 @@ impl fmt::Display for Error {
                 write!(f, "invalid signature (magic number): 0x{sig:x}")
             }
             Self::InvalidAbbrev => write!(f, "invalid abbreviation"),
-            Self::NestedBlockInBlockInfo => {
-                write!(f, "nested block in block info")
-            }
-            Self::UnexpectedBlock(id) => write!(f, "nested block {id}"),
+            Self::NestedBlockInBlockInfo => write!(f, "nested block in block info"),
+            Self::UnexpectedBlock(id) => write!(f, "Unexpected block #{id}"),
+            Self::UnexpectedRecord {
+                block_id,
+                record_id,
+            } => write!(f, "Unexpected record #{record_id} in block #{block_id}"),
             Self::MissingSetBid => write!(f, "missing SETBID"),
             Self::InvalidBlockInfoRecord(record_id) => {
                 write!(f, "invalid block info record `{record_id}`")

@@ -201,7 +201,10 @@ impl<'cursor, 'input> RecordIter<'cursor, 'input> {
     }
 
     pub fn u64(&mut self) -> Result<u64, Error> {
-        self.next()?.ok_or(Error::EndOfRecord)
+        self.next()?.ok_or_else(|| {
+            debug_assert!(false, "unexpected end of record");
+            Error::EndOfRecord
+        })
     }
 
     pub fn nzu64(&mut self) -> Result<Option<NonZero<u64>>, Error> {
