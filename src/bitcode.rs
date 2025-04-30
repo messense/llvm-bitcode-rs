@@ -324,8 +324,18 @@ impl<'cursor, 'input> RecordIter<'cursor, 'input> {
         }
     }
 
+    /// Read remainder of the fields as string chars.
+    ///
+    /// Interpret data as UTF-8.
+    /// The string may contain NUL terminator, depending on context.
+    pub fn string_utf8(&mut self) -> Result<String, Error> {
+        String::from_utf8(self.string()?).map_err(Error::Encoding)
+    }
+
     /// Read remainder of the fields as string chars
+    ///
     /// The strings are just binary blobs. LLVM doesn't guarantee any encoding.
+    /// The string may contain NUL terminator, depending on context.
     pub fn string(&mut self) -> Result<Vec<u8>, Error> {
         match &mut self.ops {
             Ops::Abbrev { state, abbrev } => match Self::take_payload_operand(state, abbrev)? {

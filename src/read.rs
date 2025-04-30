@@ -1,4 +1,5 @@
 use crate::bitstream::{PayloadOperand, ScalarOperand};
+use std::string::FromUtf8Error;
 use std::sync::Arc;
 use std::{collections::HashMap, convert::TryFrom, error, fmt};
 
@@ -23,6 +24,7 @@ pub enum Error {
     MissingEndBlock(u32),
     AbbrevWidthTooSmall(u8),
     ReadBits(bits::Error),
+    Encoding(FromUtf8Error),
     Other(&'static str),
 }
 
@@ -54,6 +56,7 @@ impl fmt::Display for Error {
             ),
             Self::MissingEndBlock(block_id) => write!(f, "missing end block for `{block_id}`"),
             Self::ReadBits(err) => err.fmt(f),
+            Self::Encoding(err) => err.fmt(f),
             Self::Other(err) => err.fmt(f),
         }
     }
