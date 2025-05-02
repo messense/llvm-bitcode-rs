@@ -1,9 +1,9 @@
 #![allow(non_camel_case_types)]
-use llvm_bitcode::BitStreamReader;
 use llvm_bitcode::bitcode::Signature;
 use llvm_bitcode::read::BlockItem;
 use llvm_bitcode::read::BlockIter;
 use llvm_bitcode::read::Error;
+use llvm_bitcode::BitStreamReader;
 use num_enum::TryFromPrimitive;
 
 fn main() {

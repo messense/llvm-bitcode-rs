@@ -1,5 +1,5 @@
-use crate::BitStreamReader;
 use crate::bitcode::{BitcodeElement, Block, Record, Signature};
+use crate::BitStreamReader;
 
 /// A visitor which receives callbacks while reading a bitstream.
 pub trait BitStreamVisitor {
