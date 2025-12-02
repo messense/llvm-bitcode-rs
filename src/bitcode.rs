@@ -436,10 +436,10 @@ impl Drop for RecordIter<'_, '_> {
     /// Must drain the remaining records to advance the cursor to the next record
     fn drop(&mut self) {
         while let Ok(Some(_)) = self.next() {}
-        if let Ops::Abbrev { abbrev, .. } = &self.ops {
-            if abbrev.payload.is_some() {
-                let _ = self.payload();
-            }
+        if let Ops::Abbrev { abbrev, .. } = &self.ops
+            && abbrev.payload.is_some()
+        {
+            let _ = self.payload();
         }
     }
 }

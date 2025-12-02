@@ -70,7 +70,7 @@ impl<'input> Cursor<'input> {
     }
 
     pub fn read_bytes(&mut self, length_bytes: usize) -> Result<&'input [u8], Error> {
-        if self.offset % 8 != 0 {
+        if !self.offset.is_multiple_of(8) {
             return Err(Error::Alignment);
         }
         let byte_start = self.offset >> 3;
@@ -84,7 +84,7 @@ impl<'input> Cursor<'input> {
     }
 
     pub fn skip_bytes(&mut self, count: usize) -> Result<(), Error> {
-        if self.offset % 8 != 0 {
+        if !self.offset.is_multiple_of(8) {
             return Err(Error::Alignment);
         }
         let byte_end = (self.offset >> 3) + count;
@@ -98,7 +98,7 @@ impl<'input> Cursor<'input> {
     /// Create a cursor for `length_bytes`, and skip over `length_bytes`
     /// Must be aligned to 32 bits.
     pub(crate) fn take_slice(&mut self, length_bytes: usize) -> Result<Self, Error> {
-        if self.offset % 32 != 0 {
+        if !self.offset.is_multiple_of(32) {
             return Err(Error::Alignment);
         }
         Ok(Cursor {
@@ -136,7 +136,7 @@ impl<'input> Cursor<'input> {
 
     /// Skip bytes until a 32-bit boundary (no-op if already aligned)
     pub fn align32(&mut self) -> Result<(), Error> {
-        let new_offset = if self.offset % 32 == 0 {
+        let new_offset = if self.offset.is_multiple_of(32) {
             self.offset
         } else {
             (self.offset + 32) & !(32 - 1)
