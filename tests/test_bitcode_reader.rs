@@ -56,7 +56,9 @@ fn test_bitstream_reader() {
         fn visit(&mut self, _block_id: u32, mut record: Record) {
             let payload = if let Some(payload) = record.take_payload() {
                 match payload {
-                    Payload::Array(ele) => format!("array({} elements)", ele.len()),
+                    Payload::Array(ele) => {
+                        format!("array({} elements)", ele.len())
+                    }
                     Payload::Blob(blob) => format!("blob({} bytes)", blob.len()),
                     Payload::Char6String(s) => s,
                 }

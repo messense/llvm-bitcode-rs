@@ -38,7 +38,9 @@ impl fmt::Display for Error {
                 write!(f, "invalid signature (magic number): 0x{sig:x}")
             }
             Self::InvalidAbbrev => write!(f, "invalid abbreviation"),
-            Self::NestedBlockInBlockInfo => write!(f, "nested block in block info"),
+            Self::NestedBlockInBlockInfo => {
+                write!(f, "nested block in block info")
+            }
             Self::UnexpectedBlock(id) => write!(f, "nested block {id}"),
             Self::MissingSetBid => write!(f, "missing SETBID"),
             Self::InvalidBlockInfoRecord(record_id) => {
@@ -54,7 +56,9 @@ impl fmt::Display for Error {
                 f,
                 "no such abbreviation `{abbrev_id}` in block `{block_id}`"
             ),
-            Self::MissingEndBlock(block_id) => write!(f, "missing end block for `{block_id}`"),
+            Self::MissingEndBlock(block_id) => {
+                write!(f, "missing end block for `{block_id}`")
+            }
             Self::ReadBits(err) => err.fmt(f),
             Self::Encoding(err) => err.fmt(f),
             Self::Other(err) => err.fmt(f),
