@@ -5,18 +5,20 @@
 [![Crates.io](https://img.shields.io/crates/v/llvm-bitcode.svg)](https://crates.io/crates/llvm-bitcode)
 [![docs.rs](https://docs.rs/llvm-bitcode/badge.svg)](https://docs.rs/llvm-bitcode/)
 
-LLVM Bitcode parser in Rust
+LLVM Bitcode parser in Rust. Supports iterating blocks and fields of records.
 
 ## Installation
 
-Add it to your ``Cargo.toml``:
+`cargo add llvm-bitcode` or add it to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-llvm-bitcode = "0.1"
+llvm-bitcode = "0.2"
 ```
 
-then you are good to go. If you are using Rust 2015 you have to add ``extern crate llvm_bitcode`` to your crate root as well.
+## Usage
+
+See [examples](https://github.com/messense/llvm-bitcode-rs/tree/HEAD/examples) and [API docs](https://docs.rs/llvm-bitcode).
 
 ## License
 
