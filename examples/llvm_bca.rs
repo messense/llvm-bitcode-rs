@@ -471,6 +471,7 @@ enum IdentificationCodes {
 /// also accepts N-1.
 #[derive(TryFromPrimitive)]
 #[repr(u32)]
+#[allow(dead_code)]
 enum EpochCode {
     BITCODE_CURRENT_EPOCH = 0,
 }
@@ -587,6 +588,7 @@ enum OperandBundleTagCode {
 
 #[derive(TryFromPrimitive)]
 #[repr(u32)]
+#[allow(dead_code)]
 enum SyncScopeNameCode {
     SYNC_SCOPE_NAME = 1,
 }
@@ -951,6 +953,7 @@ enum UseListCodes {
 
 #[derive(TryFromPrimitive)]
 #[repr(u32)]
+#[allow(dead_code)]
 enum AttributeKindCodes {
     // = 0 is unused
     ATTR_KIND_ALIGNMENT = 1,
@@ -1059,6 +1062,7 @@ enum AttributeKindCodes {
 
 #[derive(TryFromPrimitive)]
 #[repr(u32)]
+#[allow(dead_code)]
 enum ComdatSelectionKindCodes {
     COMDAT_SELECTION_KIND_ANY = 1,
     COMDAT_SELECTION_KIND_EXACT_MATCH = 2,

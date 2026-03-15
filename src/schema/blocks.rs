@@ -54,6 +54,7 @@ pub enum BlockId {
     /// Obsolete.
     ///
     /// `GLOBALVAL_SUMMARY`
+    #[deprecated]
     GlobalvalSummary,
 
     /// `OPERAND_BUNDLE_TAGS`
@@ -148,6 +149,7 @@ pub enum ModuleCode {
     /// `DEPLIB`
     ///
     /// [strchr x N]
+    #[deprecated]
     Deplib = 6,
 
     /// `GLOBALVAR`
@@ -165,6 +167,7 @@ pub enum ModuleCode {
     /// `ALIAS`
     ///
     /// [alias type, aliasee val#, linkage, visibility]
+    #[deprecated]
     AliasOld = 9,
 
     /// `GCNAME`
@@ -184,10 +187,11 @@ pub enum ModuleCode {
 
     /// `ALIAS`
     ///
-    /// [alias value type, addrspace, aliasee val#, linkage, visibility]
+    /// `[strtab_offset, strtab_size, alias_type, addrspace,  aliasee_val#, linkage, visibility, dllstorageclass,  threadlocal, unnamed_addr, preemption_specifier,  (partition_offset, partition_size)?]`
     Alias = 14,
 
     /// Obsolete.
+    #[deprecated]
     MetadataValuesUnused = 15,
 
     /// `SOURCE_FILENAME`
@@ -408,6 +412,7 @@ pub enum MetadataCode {
     /// `MDSTRING`
     ///
     /// [values]
+    #[deprecated]
     StringOld = 1,
 
     /// `VALUE`
@@ -420,7 +425,9 @@ pub enum MetadataCode {
     /// [n x md num]
     Node = 3,
 
-    /// `STRING`
+    /// `NAME` (string)
+    ///
+    /// This is before `METADATA_NAMED_NODE`
     ///
     /// [values]
     Name = 4,
@@ -577,6 +584,9 @@ pub enum MetadataCode {
 
     /// `STRINGS`
     ///
+    /// All the metadata strings in a metadata block are emitted in a single
+    /// record.  The sizes and strings themselves are shoved into a blob.
+    ///
     /// [count, offset] blob([lengths][chars])
     Strings = 35,
 
@@ -674,6 +684,7 @@ pub enum AttributeCode {
     /// `ENTRY_OLD`
     ///
     /// [paramidx0, attr0, paramidx1, attr1...]
+    #[deprecated]
     EntryOld = 1,
 
     /// `ENTRY`
@@ -752,11 +763,13 @@ pub enum TypeCode {
     /// Typed pointers are obsolete.
     ///
     /// [pointee type]
+    #[deprecated]
     Pointer = 8,
 
     /// Obsolete
     ///
     /// [vararg, attrid, retty, paramty x N]
+    #[deprecated]
     FunctionOld = 9,
 
     /// `HALF`
@@ -894,6 +907,7 @@ pub enum ConstantsCodes {
     /// `CE_GEP`
     ///
     /// [n x operands]
+    #[deprecated]
     GepOld = 12,
 
     /// Unused
@@ -923,6 +937,7 @@ pub enum ConstantsCodes {
     /// `CE_CMP`
     ///
     /// [opty, opval, opval, pred]
+    #[deprecated]
     Cmp = 17,
 
     /// Obsolete inline asm record variant
@@ -930,6 +945,7 @@ pub enum ConstantsCodes {
     /// `INLINEASM`
     ///
     /// [sideeffect|alignstack, asmstr, onststr]
+    #[deprecated]
     InlineasmOld = 18,
 
     /// `SHUFVEC_EX`
@@ -942,6 +958,7 @@ pub enum ConstantsCodes {
     /// `INBOUNDS_GEP`
     ///
     /// [n x operands]
+    #[deprecated]
     InboundsGep = 20,
 
     /// `BLOCKADDRESS`
@@ -959,9 +976,11 @@ pub enum ConstantsCodes {
     /// `INLINEASM`
     ///
     /// [sideeffect|alignstack|asmdialect, smstr, onststr]
+    #[deprecated]
     InlineAsmOld2 = 23,
 
     /// [opty, flags, n x operands]
+    #[deprecated]
     GepWithInrangeIndexOld = 24,
 
     /// `CST_CODE_CE_UNOP`
@@ -982,6 +1001,7 @@ pub enum ConstantsCodes {
     /// `INLINEASM`
     ///
     /// [sideeffect|alignstack|asmdialect|unwind, asmstr, onststr]
+    #[deprecated]
     InlineAsmOld3 = 28,
 
     /// `NO_CFI`
@@ -1033,6 +1053,7 @@ pub enum FunctionCode {
     /// `GEP`
     ///
     /// [n x operands]
+    #[deprecated]
     GepOld = 4,
 
     /// Unused.
@@ -1040,6 +1061,7 @@ pub enum FunctionCode {
     /// `SELECT`
     ///
     /// [ty, opval, opval, opval]
+    #[deprecated]
     SelectOld = 5,
 
     /// `EXTRACTELT`
@@ -1060,6 +1082,7 @@ pub enum FunctionCode {
     /// `CMP`
     ///
     /// [opty, opval, opval, pred]
+    #[deprecated]
     Cmp = 9,
 
     /// `RET`
@@ -1092,12 +1115,12 @@ pub enum FunctionCode {
 
     /// `ALLOCA`
     ///
-    /// [instty, opty, op, align]
+    /// [instty, opty, op, packed_flags_align, ?addrspace]
     Alloca = 19,
 
     /// `LOAD`
     ///
-    /// [opty, op, align, vol]
+    /// [opty, op, ret_ty, align, vol]
     Load = 20,
 
     /// `VAARG`
@@ -1113,6 +1136,7 @@ pub enum FunctionCode {
     /// `STORE`
     ///
     /// [ptrty, tr, al, align, vol]
+    #[deprecated]
     StoreOld = 24,
 
     /// `EXTRACTVAL`
@@ -1145,6 +1169,7 @@ pub enum FunctionCode {
     /// `INBOUNDS_GEP`
     ///
     /// [n x operands]
+    #[deprecated]
     InboundsGepOld = 30,
 
     /// `INDIRECTBR`
@@ -1175,6 +1200,7 @@ pub enum FunctionCode {
     /// `CMPXCHG`
     ///
     /// [ptrty, ptr, cmp, val, vol, ordering, synchscope, failure_ordering?, weak?]
+    #[deprecated]
     CmpxchgOld = 37,
 
     /// Obsolete atomicrmw record; replaced by `FUNC_CODE_INST_ATOMICRMW`
@@ -1182,6 +1208,7 @@ pub enum FunctionCode {
     /// `ATOMICRMW`
     ///
     /// [ptrty, tr, al, operation, align, vol, ordering, synchscope]
+    #[deprecated]
     AtomicRmwOld = 38,
 
     /// `RESUME`
@@ -1194,11 +1221,12 @@ pub enum FunctionCode {
     /// `LANDINGPAD`
     ///
     /// [ty, al, al, um, d0, al0...]
+    #[deprecated]
     LandingPadOld = 40,
 
-    /// `LOAD`
+    /// `LOADATOMIC`
     ///
-    /// [opty, op, align, vol, ordering, synchscope]
+    /// [opty, op, ret_ty, align, vol, ordering, synchscope]
     LoadAtomic = 41,
 
     /// Obsolete store-atomic record; replaced by `FUNC_CODE_INST_STOREATOMIC`
@@ -1206,6 +1234,7 @@ pub enum FunctionCode {
     /// `STORE`
     ///
     /// [ptrty, tr, al, align, vol ordering, synchscope]
+    #[deprecated]
     StoreAtomicOld = 42,
 
     /// `GEP`
@@ -1215,7 +1244,8 @@ pub enum FunctionCode {
 
     /// `STORE`
     ///
-    /// [ptrty, tr, alty, al, align, vol]
+    /// [ptr_val_id, ptr_type_id?, stored_val_id, stored_type_id?, align, vol]
+    /// Type IDs only present for forward references
     Store = 44,
 
     /// `STORE`
@@ -1245,17 +1275,17 @@ pub enum FunctionCode {
 
     /// `CATCHPAD`
     ///
-    /// [bb#, b#, um, rgs...]
+    /// [parent_pad, num_args, args...]
     CatchPad = 50,
 
     /// `CLEANUPPAD`
     ///
-    /// [num, rgs...]
+    /// [parent_pad, num_args, args...]
     CleanupPad = 51,
 
     /// `CATCHSWITCH`
     ///
-    /// [num, rgs...] or [num, rgs..., b]
+    /// [parent_pad, num_handlers, handlers..., unwind_dest?]
     CatchSwitch = 52,
 
     /// `OPERAND_BUNDLE`
