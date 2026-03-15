@@ -127,7 +127,7 @@ impl BitStreamReader {
         visitor: &mut V,
     ) -> Result<(), Error> {
         let block_id = block.id;
-        while let Some(item) = block.next()? {
+        while let Some(item) = block.try_next()? {
             match item {
                 BlockItem::Block(new_block) => {
                     let new_id = new_block.id;
@@ -299,15 +299,23 @@ impl<'global_state, 'input> BlockIter<'global_state, 'input> {
     pub fn next_record<'parent>(
         &'parent mut self,
     ) -> Result<Option<RecordIter<'parent, 'input>>, Error> {
-        match self.next()? {
+        match self.try_next()? {
             None => Ok(None),
             Some(BlockItem::Record(rec)) => Ok(Some(rec)),
             Some(BlockItem::Block(block)) => Err(Error::UnexpectedBlock(block.id)),
         }
     }
 
-    /// Returns the next item (block or record) in this block
+    #[doc(hidden)]
+    #[deprecated(note = "renamed to `try_next`")]
     pub fn next<'parent>(&'parent mut self) -> Result<Option<BlockItem<'parent, 'input>>, Error> {
+        self.try_next()
+    }
+
+    /// Returns the next item (block or record) in this block
+    pub fn try_next<'parent>(
+        &'parent mut self,
+    ) -> Result<Option<BlockItem<'parent, 'input>>, Error> {
         if self.cursor.is_at_end() {
             return if self.id == BitStreamReader::TOP_LEVEL_BLOCK_ID {
                 Ok(None)
@@ -335,7 +343,7 @@ impl<'global_state, 'input> BlockIter<'global_state, 'input> {
                     if block_id == 0 {
                         self.reader
                             .read_block_info_block(&mut cursor, new_abbrev_width)?;
-                        return self.next();
+                        return self.try_next();
                     }
 
                     // Create new block iterator
@@ -348,7 +356,7 @@ impl<'global_state, 'input> BlockIter<'global_state, 'input> {
                         &mut self.cursor,
                         &mut self.block_local_abbrevs,
                     )?;
-                    self.next()
+                    self.try_next()
                 }
                 UnabbreviatedRecord => {
                     let record_iter = RecordIter::from_cursor(&mut self.cursor)?;

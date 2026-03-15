@@ -24,7 +24,7 @@ fn main() {
 
 fn iter_block(mut block: BlockIter, depth: usize) -> Result<(), Error> {
     let outer_block_id = block.id;
-    while let Some(b) = block.next()? {
+    while let Some(b) = block.try_next()? {
         match b {
             BlockItem::Block(b) => {
                 let tag_name = block_tag_name(b.id as _);

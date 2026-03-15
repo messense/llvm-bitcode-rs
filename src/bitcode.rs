@@ -93,7 +93,7 @@ pub struct RecordIter<'cursor, 'input> {
 impl<'cursor, 'input> RecordIter<'cursor, 'input> {
     pub(crate) fn into_record(mut self) -> Result<Record, Error> {
         let mut fields = Vec::with_capacity(self.len());
-        while let Some(f) = self.next()? {
+        while let Some(f) = self.try_next()? {
             fields.push(f);
         }
         Ok(Record {
@@ -181,7 +181,16 @@ impl<'cursor, 'input> RecordIter<'cursor, 'input> {
         self.len() == 0
     }
 
+    #[doc(hidden)]
+    #[deprecated(note = "renamed to `try_next()` to avoid confusion with `Iterator::next`")]
+    #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> Result<Option<u64>, Error> {
+        self.try_next()
+    }
+
+    /// Consume next record
+    #[doc(alias = "next")]
+    pub fn try_next(&mut self) -> Result<Option<u64>, Error> {
         match &mut self.ops {
             Ops::Abbrev { state, abbrev } => {
                 let Some(&op) = abbrev.fields.get(*state) else {
@@ -201,7 +210,7 @@ impl<'cursor, 'input> RecordIter<'cursor, 'input> {
     }
 
     pub fn u64(&mut self) -> Result<u64, Error> {
-        self.next()?.ok_or(Error::EndOfRecord)
+        self.try_next()?.ok_or(Error::EndOfRecord)
     }
 
     pub fn nzu64(&mut self) -> Result<Option<NonZero<u64>>, Error> {
@@ -413,7 +422,7 @@ impl<'cursor, 'input> RecordIter<'cursor, 'input> {
     }
 
     /// For debug printing
-    fn from_cloned_cursor<'new_cursor>(
+    fn with_cloned_cursor<'new_cursor>(
         &self,
         cursor: &'new_cursor mut Cursor<'input>,
     ) -> RecordIter<'new_cursor, 'input> {
@@ -428,14 +437,14 @@ impl<'cursor, 'input> RecordIter<'cursor, 'input> {
 impl Iterator for RecordIter<'_, '_> {
     type Item = Result<u64, Error>;
     fn next(&mut self) -> Option<Self::Item> {
-        self.next().transpose()
+        self.try_next().transpose()
     }
 }
 
 impl Drop for RecordIter<'_, '_> {
     /// Must drain the remaining records to advance the cursor to the next record
     fn drop(&mut self) {
-        while let Ok(Some(_)) = self.next() {}
+        while let Ok(Some(_)) = self.try_next() {}
         if let Ops::Abbrev { abbrev, .. } = &self.ops
             && abbrev.payload.is_some()
         {
@@ -450,7 +459,7 @@ struct RecordIterDebugResult<T, E>(Result<T, E>);
 impl fmt::Debug for RecordIter<'_, '_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut c = self.cursor.clone();
-        let fields = RecordIterDebugFields(RefCell::new(self.from_cloned_cursor(&mut c)));
+        let fields = RecordIterDebugFields(RefCell::new(self.with_cloned_cursor(&mut c)));
 
         f.debug_struct("RecordIter")
             .field("id", &self.id)
