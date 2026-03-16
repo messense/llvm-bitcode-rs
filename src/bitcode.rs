@@ -209,8 +209,15 @@ impl<'cursor, 'input> RecordIter<'cursor, 'input> {
         }
     }
 
+    #[cfg_attr(debug_assertions, track_caller)]
     pub fn u64(&mut self) -> Result<u64, Error> {
-        self.try_next()?.ok_or(Error::EndOfRecord)
+        match self.try_next()? {
+            Some(v) => Ok(v),
+            None => {
+                debug_assert!(false, "unexpected end of record");
+                Err(Error::EndOfRecord)
+            }
+        }
     }
 
     pub fn nzu64(&mut self) -> Result<Option<NonZero<u64>>, Error> {
@@ -229,32 +236,59 @@ impl<'cursor, 'input> RecordIter<'cursor, 'input> {
         })
     }
 
+    #[cfg_attr(debug_assertions, track_caller)]
     pub fn u32(&mut self) -> Result<u32, Error> {
-        self.u64()?.try_into().map_err(|_| Error::ValueOverflow)
+        let val = self.u64()?;
+        match val.try_into() {
+            Ok(v) => Ok(v),
+            Err(_) => {
+                debug_assert!(false, "{val} overflows u32");
+                Err(Error::ValueOverflow)
+            }
+        }
     }
 
     pub fn nzu32(&mut self) -> Result<Option<NonZero<u32>>, Error> {
         self.u32().map(NonZero::new)
     }
 
+    #[cfg_attr(debug_assertions, track_caller)]
     pub fn u8(&mut self) -> Result<u8, Error> {
-        self.u64()?.try_into().map_err(|_| Error::ValueOverflow)
+        let val = self.u64()?;
+        match val.try_into() {
+            Ok(v) => Ok(v),
+            Err(_) => {
+                debug_assert!(false, "{val} overflows u8");
+                Err(Error::ValueOverflow)
+            }
+        }
     }
 
+    #[cfg_attr(debug_assertions, track_caller)]
     pub fn try_from<U: TryFrom<u64>, T: TryFrom<U>>(&mut self) -> Result<T, Error> {
-        T::try_from(self.u64()?.try_into().map_err(|_| Error::ValueOverflow)?)
-            .map_err(|_| Error::ValueOverflow)
+        let val = self.u64()?;
+        match val.try_into().ok().and_then(|v| T::try_from(v).ok()) {
+            Some(val) => Ok(val),
+            None => {
+                debug_assert!(false, "{val} overflows {}", std::any::type_name::<U>());
+                Err(Error::ValueOverflow)
+            }
+        }
     }
 
     pub fn nzu8(&mut self) -> Result<Option<NonZero<u8>>, Error> {
         self.u8().map(NonZero::new)
     }
 
+    #[cfg_attr(debug_assertions, track_caller)]
     pub fn bool(&mut self) -> Result<bool, Error> {
         match self.u64()? {
             0 => Ok(false),
             1 => Ok(true),
-            _ => Err(Error::ValueOverflow),
+            val => {
+                debug_assert!(false, "{val} overflows bool");
+                Err(Error::ValueOverflow)
+            }
         }
     }
 
@@ -345,6 +379,7 @@ impl<'cursor, 'input> RecordIter<'cursor, 'input> {
     ///
     /// The strings are just binary blobs. LLVM doesn't guarantee any encoding.
     /// The string may contain NUL terminator, depending on context.
+    #[cfg_attr(debug_assertions, track_caller)]
     pub fn string(&mut self) -> Result<Vec<u8>, Error> {
         match &mut self.ops {
             Ops::Abbrev { state, abbrev } => match Self::take_payload_operand(state, abbrev)? {
@@ -393,7 +428,13 @@ impl<'cursor, 'input> RecordIter<'cursor, 'input> {
                 let mut out = Vec::with_capacity(len);
                 for _ in 0..len {
                     let ch = self.cursor.read_vbr(6)?;
-                    out.push(u8::try_from(ch).map_err(|_| Error::ValueOverflow)?);
+                    out.push(match u8::try_from(ch) {
+                        Ok(c) => c,
+                        Err(_) => {
+                            debug_assert!(false, "{ch} too big for char");
+                            return Err(Error::ValueOverflow);
+                        }
+                    });
                 }
                 Ok(out)
             }

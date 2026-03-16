@@ -32,7 +32,10 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::EndOfRecord => write!(f, "read past end of record"),
-            Self::ValueOverflow => write!(f, "read integer too big"),
+            Self::ValueOverflow => write!(
+                f,
+                "integer out of range (likely due to misparsing the format)"
+            ),
             Self::UnexpectedOperand(op) => write!(f, "Unexpected operand {op:?}"),
             Self::InvalidSignature(sig) => {
                 write!(f, "invalid signature (magic number): 0x{sig:x}")
