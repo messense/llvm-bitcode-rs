@@ -1201,7 +1201,7 @@ pub enum FunctionCode {
     ///
     /// [ptrty, ptr, cmp, val, vol, ordering, synchscope, failure_ordering?, weak?]
     #[deprecated]
-    CmpxchgOld = 37,
+    CmpXchgOld = 37,
 
     /// Obsolete atomicrmw record; replaced by `FUNC_CODE_INST_ATOMICRMW`
     ///
@@ -1256,7 +1256,7 @@ pub enum FunctionCode {
     /// `CMPXCHG`
     ///
     /// [ptrty, ptr, cmp, val, vol, success_ordering, synchscope, failure_ordering, weak]
-    Cmpxchg = 46,
+    AtomicCmpXchg = 46,
 
     /// `LANDINGPAD`
     ///

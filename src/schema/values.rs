@@ -107,20 +107,20 @@ pub enum AttrKind {
     /// Unused
     InaccessibleMemOnly = 49,
     /// Unused
-    InaccessiblememOrArgMemOnly = 50,
+    InaccessibleMemOrArgMemOnly = 50,
     /// The result of the function is guaranteed to point to a number of bytes that
     /// we can determine if we know the value of the function's arguments.
     AllocSize = 51,
     /// Function only writes to memory.
-    Writeonly = 52,
+    WriteOnly = 52,
     /// Function can be speculated.
     Speculatable = 53,
     /// Function was called in a scope requiring strict floating point semantics.
     StrictFp = 54,
     /// HWAddressSanitizer is on.
-    SanitizeHwaddress = 55,
+    SanitizeHwAddress = 55,
     /// Disable Indirect Branch Tracking.
-    NocfCheck = 56,
+    NoCfCheck = 56,
     /// Select optimizations for best fuzzing signal.
     OptForFuzzing = 57,
     /// Shadow Call Stack protection.
@@ -133,7 +133,7 @@ pub enum AttrKind {
     /// this attribute will always be lowered with hardening enabled.
     SpeculativeLoadHardening = 59,
     /// Parameter is required to be a trivial constant.
-    Immarg = 60,
+    ImmArg = 60,
     /// Function always comes back to callsite.
     Willreturn = 61,
     /// Function does not deallocate memory.
@@ -149,11 +149,11 @@ pub enum AttrKind {
     /// Null pointer in address space zero is valid.
     NullPointerIsValid = 67,
     /// Parameter or return value may not contain uninitialized or poison bits.
-    Noundef = 68,
+    NoUndef = 68,
     /// Mark in-memory ABI type.
     Byref = 69,
     /// Function is required to make Forward Progress.
-    Mustprogress = 70,
+    MustProgress = 70,
     /// Function cannot enter into caller's translation unit.
     NoCallback = 71,
     /// Marks function as being in a hot path and frequently called.
@@ -204,6 +204,33 @@ pub enum AttrKind {
     Initializes = 94,
     /// Function has a hybrid patchable thunk.
     HybridPatchable = 95,
+    /// RealtimeSanitizer is on.
+    SanitizeRealtime = 96,
+    /// RealtimeSanitizer should error if a real-time unsafe function is invoked
+    /// during a real-time sanitized function (see `sanitize_realtime`).
+    SanitizeRealtimeBlocking = 97,
+    /// The coroutine call meets the elide requirement. Hint the optimization
+    /// pipeline to perform elide on the call or invoke instruction.
+    CoroElideSafe = 98,
+    /// No extension needed before/after call (high bits are undefined).
+    NoExt = 99,
+    /// Function is not a source of divergence.
+    NoDivergenceSource = 100,
+    /// TypeSanitizer is on.
+    SanitizeType = 101,
+    /// Specify how the pointer may be captured.
+    Captures = 102,
+    /// Argument is dead upon function return.
+    DeadOnReturn = 103,
+    /// Allocation token instrumentation is on.
+    SanitizeAllocToken = 104,
+    /// Result will not be undef or poison if all arguments are not undef and not
+    /// poison.
+    NoCreateUndefOrPoison = 105,
+    /// Indicate the denormal handling of the default floating-point
+    /// environment.
+    DenormalFpEnv = 106,
+    NoOutline = 107,
 }
 
 /// These are values used in the bitcode files to encode which
@@ -229,35 +256,66 @@ pub enum CastOpcode {
 /// These are bitcode-specific values, different from C++ enum
 #[derive(Debug, TryFromPrimitive)]
 #[repr(u8)]
+#[non_exhaustive]
 pub enum Linkage {
     /// Externally visible function
     External = 0,
-    Weak = 1,
+    /// Keep one copy of named function when linking (weak)
+    /// Old value with implicit comdat.
+    #[deprecated]
+    WeakAnyOld = 1,
     /// Special purpose, only applies to global arrays
     Appending = 2,
     /// Rename collisions when linking (static functions).
     Internal = 3,
-    Linkonce = 4,
+    /// Keep one copy of function when linking (inline)
+    /// Old value with implicit comdat.
+    #[deprecated]
+    LinkOnceAnyOld = 4,
     /// Externally visible function
     /// Obsolete DLLImportLinkage
     #[deprecated]
-    Dllimport = 5,
+    DllImport = 5,
     /// Externally visible function
     /// Obsolete DLLExportLinkage
     #[deprecated]
-    Dllexport = 6,
-    /// ExternalWeak linkage description.
+    DllExport = 6,
+    /// ExternalWeak linkage
     ExternWeak = 7,
     /// Tentative definitions.
     Common = 8,
     /// Like Internal, but omit from symbol table.
     Private = 9,
-    WeakOdr = 10,
-    LinkonceOdr = 11,
+    /// Same, but only replaced by something equivalent.
+    /// Old value with implicit comdat.
+    #[deprecated]
+    WeakOdrOld = 10,
+    /// Same, but only replaced by something equivalent.
+    /// Old value with implicit comdat.
+    #[deprecated]
+    LinkOnceOdrOld = 11,
     /// Available for inspection, not emission.
     AvailableExternally = 12,
-    Deprecated1 = 13,
-    Deprecated2 = 14,
+    /// Like Internal, but omit from symbol table.
+    /// Obsolete LinkerPrivateLinkage
+    #[deprecated]
+    LinkerPrivate = 13,
+    /// Like Internal, but omit from symbol table.
+    /// Obsolete LinkerPrivateWeakLinkage
+    #[deprecated]
+    LinkerPrivateWeak = 14,
+    /// Externally visible function
+    /// Obsolete LinkOnceODRAutoHideLinkage
+    #[deprecated]
+    LinkOnceOdrAutoHide = 15,
+    /// Keep one copy of named function when linking (weak)
+    WeakAny = 16,
+    /// Same, but only replaced by something equivalent.
+    WeakOdr = 17,
+    /// Keep one copy of function when linking (inline)
+    LinkOnceAny = 18,
+    /// Same, but only replaced by something equivalent.
+    LinkOnceOdr = 19,
 }
 
 #[derive(Debug, TryFromPrimitive)]
@@ -270,6 +328,7 @@ pub enum DllStorageClass {
 
 #[derive(Debug, TryFromPrimitive)]
 #[repr(u8)]
+#[non_exhaustive]
 pub enum CallConv {
     /// The default llvm calling convention, compatible with C. This convention
     /// is the only one that supports varargs calls. As with typical C calling
@@ -285,7 +344,7 @@ pub enum CallConv {
     /// ranges in the caller side.
     Cold = 9,
     /// Used by the Glasgow Haskell Compiler (GHC).
-    GHC = 10,
+    Ghc = 10,
     /// Used by the High-Performance Erlang Compiler (HiPE).
     HiPE = 11,
     /// Used for dynamic register based calls (e.g. stackmap and patchpoint
@@ -306,7 +365,7 @@ pub enum CallConv {
     /// Check ICall funtion. The function takes exactly one argument (address of
     /// the target function) passed in the first argument register, and has no
     /// return value. All register values are preserved.
-    CFGuardCheck = 19,
+    CfGuardCheck = 19,
     /// This follows the Swift calling convention in how arguments are passed
     /// but guarantees tail calls will be made by making the callee clean up
     /// their stack.
@@ -335,10 +394,10 @@ pub enum CallConv {
     /// methods in its ABI.
     X86ThisCall = 70,
     /// Call to a PTX kernel. Passes all arguments in parameter space.
-    PTXKernel = 71,
+    PtxKernel = 71,
     /// Call to a PTX device function. Passes all arguments in register or
     /// parameter space.
-    PTXDevice = 72,
+    PtxDevice = 72,
     /// Used for SPIR non-kernel device functions. No lowering or expansion of
     /// arguments. Structures are passed as a pointer to a struct with the
     /// byval attribute. Functions can only call SPIR_FUNC and SPIR_KERNEL
@@ -411,7 +470,7 @@ pub enum CallConv {
     /// Used between AArch64 Advanced SIMD functions
     AArch64VectorCall = 97,
     /// Used between AArch64 SVE functions
-    AArch64SVEVectorCall = 98,
+    AArch64SveVectorCall = 98,
     /// For emscripten __invoke_* functions. The first argument is required to
     /// be the function ptr being indirectly called. The remainder matches the
     /// regular calling convention.
@@ -426,26 +485,49 @@ pub enum CallConv {
     AArch64SmeAbiSupportRoutinesPreserveMostFromX2 = 103,
     /// Used on AMDGPUs to give the middle-end more control over argument
     /// placement.
-    AmdGpuCSChain = 104,
+    AmdGpuCsChain = 104,
     /// Used on AMDGPUs to give the middle-end more control over argument
     /// placement. Preserves active lane values for input VGPRs.
-    AmdGpuCSChainPreserve = 105,
+    AmdGpuCsChainPreserve = 105,
     /// Used for M68k rtd-based CC (similar to X86's stdcall).
-    M68kRTD = 106,
+    M68kRtd = 106,
     /// Used by GraalVM. Two additional registers are reserved.
     Graal = 107,
     /// Calling convention used in the ARM64EC ABI to implement calls between
     /// x64 code and thunks. This is basically the x64 calling convention using
     /// ARM64 register names. The first parameter is mapped to x9.
-    Arm64ECThunkX64 = 108,
+    Arm64ecThunkX64 = 108,
     /// Calling convention used in the ARM64EC ABI to implement calls between
     /// ARM64 code and thunks. This is just the ARM64 calling convention,
     /// except that the first parameter is mapped to x9.
-    Arm64ECThunkNative = 109,
+    Arm64ecThunkNative = 109,
     /// Calling convention used for RISC-V V-extension.
     RiscVVectorCall = 110,
     /// Preserve X1-X15, X19-X29, SP, Z0-Z31, P0-P15.
     AArch64SmeAbiSupportRoutinesPreserveMostFromX1 = 111,
+    /// Calling convention used for RISC-V V-extension fixed vectors.
+    RiscVVlsCall32 = 112,
+    RiscVVlsCall64 = 113,
+    RiscVVlsCall128 = 114,
+    RiscVVlsCall256 = 115,
+    RiscVVlsCall512 = 116,
+    RiscVVlsCall1024 = 117,
+    RiscVVlsCall2048 = 118,
+    RiscVVlsCall4096 = 119,
+    RiscVVlsCall8192 = 120,
+    RiscVVlsCall16384 = 121,
+    RiscVVlsCall32768 = 122,
+    RiscVVlsCall65536 = 123,
+    AmdGpuGfxWholeWave = 124,
+    /// Calling convention used for CHERIoT when crossing a protection boundary.
+    CHERIoTCompartmentCall = 125,
+    /// Calling convention used for the callee of CHERIoT_CompartmentCall.
+    /// Ignores the first two capability arguments and the first integer
+    /// argument, zeroes all unused return registers on return.
+    CHERIoTCompartmentCallee = 126,
+    /// Calling convention used for CHERIoT for cross-library calls to a
+    /// stateless compartment.
+    CHERIoTLibraryCall = 127,
 }
 
 /// call conv field in bitcode is often mixed with flags
