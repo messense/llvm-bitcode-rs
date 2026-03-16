@@ -1,6 +1,6 @@
 [package]
 name = "llvm-bitcode"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["messense <messense@icloud.com>", "Kornel <kornel@geekhood.net>"]
 description = "LLVM Bitcode parser in Rust"
 edition = "2024"
@@ -9,6 +9,7 @@ categories = ["parser-implementations"]
 readme = "README.md"
 license = "MIT AND Apache-2.0 WITH LLVM-exception"
 repository = "https://github.com/messense/llvm-bitcode-rs.git"
+include = ["/README.md", "/LICENSE*", "src/**/*.rs"]
 
 [dependencies]
 num_enum = "0.7.2"
