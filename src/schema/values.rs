@@ -231,6 +231,9 @@ pub enum AttrKind {
     /// environment.
     DenormalFpEnv = 106,
     NoOutline = 107,
+
+    /// llvm-bitcode-rs extension for storing string key/value attributes
+    StringAttribute = !0,
 }
 
 /// These are values used in the bitcode files to encode which
