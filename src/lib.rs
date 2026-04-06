@@ -14,6 +14,8 @@ pub mod visitor;
 pub mod schema {
     /// IDs of blocks and records inside the blocks
     pub mod blocks;
+    /// DWARF-specific types
+    pub mod dwarf;
     /// Flags and values found in records
     pub mod values;
 }
