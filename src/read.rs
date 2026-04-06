@@ -1,4 +1,5 @@
 use crate::bitstream::{PayloadOperand, ScalarOperand};
+use std::num::TryFromIntError;
 use std::string::FromUtf8Error;
 use std::sync::Arc;
 use std::{collections::HashMap, convert::TryFrom, error, fmt};
@@ -74,6 +75,12 @@ impl error::Error for Error {}
 impl From<bits::Error> for Error {
     fn from(err: bits::Error) -> Self {
         Self::ReadBits(err)
+    }
+}
+
+impl From<TryFromIntError> for Error {
+    fn from(_: TryFromIntError) -> Self {
+        Self::ValueOverflow
     }
 }
 
