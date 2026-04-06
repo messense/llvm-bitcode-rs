@@ -1,6 +1,6 @@
 //! From the LLVM Project, under the [Apache License v2.0 with LLVM Exceptions](https://llvm.org/LICENSE.txt)
 
-use num_enum::{TryFromPrimitive, TryFromPrimitiveError};
+use num_enum::{FromPrimitive, IntoPrimitive, TryFromPrimitive, TryFromPrimitiveError};
 use std::num::NonZero;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, TryFromPrimitive)]
@@ -1036,4 +1036,52 @@ impl Alignment {
     pub fn bytes(self) -> usize {
         1usize << self.ilog2()
     }
+}
+
+/// Address spaces identify different memory regions. The default address space is 0.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, FromPrimitive, IntoPrimitive)]
+#[repr(u8)]
+pub enum AddressSpace {
+    /// Default/generic address space
+    Generic = 0,
+    /// Global memory
+    ///
+    /// used by AMDGPU, NVPTX
+    Global = 1,
+    /// Region memory
+    ///
+    /// AMDGPU specific
+    Region = 2,
+    /// Local (AMDGPU)/shared memory (NVPTX, OpenMP)
+    Local = 3,
+    /// Constant memory
+    ///
+    /// used by AMDGPU, NVPTX, OpenMP
+    Constant = 4,
+    /// Private memory
+    ///
+    /// used by AMDGPU, NVPTX, OpenMP
+    Private = 5,
+    /// AMDGPU specific
+    Constant32Bit = 6,
+    /// AMDGPU specific
+    Flat = 7,
+
+    #[num_enum(catch_all)]
+    Other(u8),
+}
+
+#[allow(clippy::derivable_impls)]
+impl Default for AddressSpace {
+    fn default() -> Self {
+        Self::Generic
+    }
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, TryFromPrimitive)]
+#[repr(u8)]
+#[non_exhaustive]
+pub enum FuncletPad {
+    CleanupPad = 0,
+    CatchPad = 1,
 }
