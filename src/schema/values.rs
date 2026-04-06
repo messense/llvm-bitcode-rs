@@ -710,26 +710,29 @@ pub enum FastMathMap {
     AllowReassoc = 1 << 7,
 }
 
-/// Flags for serializing
-/// GEPOperator's SubclassOptionalData contents.
-#[derive(Debug, Clone, Copy, TryFromPrimitive)]
-#[repr(u8)]
-#[non_exhaustive]
-pub enum GetElementPtrOptionalFlags {
-    Inbounds = 0,
-    Nusw = 1,
-    Nuw = 2,
+bitflags::bitflags! {
+    /// `GetElementPtrOptionalFlags`
+    #[derive(Debug, Copy, Clone, Default)]
+    pub struct GEPFlags: u8 {
+        /// GEP_INBOUNDS = Index is guaranteed within bounds (enables optimizations)
+        const Inbounds = 1 << 0;
+        /// GEP_NUSW = No unsigned/signed wrap
+        const Nusw = 1 << 1;
+        /// GEP_NUW = No unsigned wrap
+        const Nuw = 1 << 2;
+    }
 }
 
-/// Markers and flags for call instruction.
-#[derive(Debug, Clone, Copy, TryFromPrimitive)]
-#[repr(u8)]
-#[non_exhaustive]
-pub enum CallMarkersFlags {
-    Tail = 0,
-    Cconv = 1,
-    MustTail = 14,
-    ExplicitType = 15,
-    NoTail = 16,
-    Fmf = 17, // Call has optional fast-math-flags.
+bitflags::bitflags! {
+    /// Markers and flags for call instruction
+    #[derive(Debug, Copy, Clone, Default)]
+    pub struct CallMarkersFlags: u32 {
+        const Tail = 1 << 0;
+        const Cconv = 1 << 1;
+        const MustTail = 1 << 14;
+        const ExplicitType = 1 << 15;
+        const NoTail = 1 << 16;
+        /// Call has optional fast-math-flags
+        const Fmf = 1 << 17;
+    }
 }
