@@ -124,7 +124,7 @@ pub enum AttrKind {
     /// Select optimizations for best fuzzing signal.
     OptForFuzzing = 57,
     /// Shadow Call Stack protection.
-    Shadowcallstack = 58,
+    ShadowCallStack = 58,
     /// Speculative Load Hardening is enabled.
     ///
     /// Note that this uses the default compatibility (always compatible during
@@ -135,7 +135,7 @@ pub enum AttrKind {
     /// Parameter is required to be a trivial constant.
     ImmArg = 60,
     /// Function always comes back to callsite.
-    Willreturn = 61,
+    WillReturn = 61,
     /// Function does not deallocate memory.
     Nofree = 62,
     /// Function does not synchronize.
@@ -151,7 +151,7 @@ pub enum AttrKind {
     /// Parameter or return value may not contain uninitialized or poison bits.
     NoUndef = 68,
     /// Mark in-memory ABI type.
-    Byref = 69,
+    ByRef = 69,
     /// Function is required to make Forward Progress.
     MustProgress = 70,
     /// Function cannot enter into caller's translation unit.
@@ -183,12 +183,12 @@ pub enum AttrKind {
     PresplitCoroutine = 83,
     /// Whether to keep return instructions, or replace with a jump to an external
     /// symbol.
-    FnretthunkExtern = 84,
+    FnRetThunkExtern = 84,
     SkipProfile = 85,
     /// Memory effects of the function.
     Memory = 86,
     /// Forbidden floating-point classes.
-    Nofpclass = 87,
+    NoFpClass = 87,
     /// Select optimizations that give decent debug info.
     OptimizeForDebugging = 88,
     /// Pointer argument is writable.
@@ -562,15 +562,15 @@ pub enum BinOpcode {
     Add = 0,
     Sub = 1,
     Mul = 2,
-    Udiv = 3,
+    UDiv = 3,
     /// overloaded for FP
-    Sdiv = 4,
-    Urem = 5,
+    SDiv = 4,
+    URem = 5,
     /// overloaded for FP
-    Srem = 6,
+    SRem = 6,
     Shl = 7,
-    Lshr = 8,
-    Ashr = 9,
+    LShr = 8,
+    AShr = 9,
     And = 10,
     Or = 11,
     Xor = 12,
@@ -581,7 +581,7 @@ pub enum BinOpcode {
 #[repr(u8)]
 pub enum AtomicOrdering {
     #[default]
-    Notatomic = 0,
+    NotAtomic = 0,
     Unordered = 1,
     Monotonic = 2,
     Acquire = 3,
@@ -635,34 +635,34 @@ pub enum RmwOperation {
     Min = 8,
 
     /// `UMAX`
-    Umax = 9,
+    UMax = 9,
 
     /// `UMIN`
-    Umin = 10,
+    UMin = 10,
 
     /// `FADD`
-    Fadd = 11,
+    FAdd = 11,
 
     /// `FSUB`
-    Fsub = 12,
+    FSub = 12,
 
     /// `FMAX`
-    Fmax = 13,
+    FMax = 13,
 
     /// `FMIN`
-    Fmin = 14,
+    FMin = 14,
 
     /// `UINC_WRAP`
-    UincWrap = 15,
+    UIncWrap = 15,
 
     /// `UDEC_WRAP`
-    UdecWrap = 16,
+    UDecWrap = 16,
 
     /// `USUB_COND`
-    UsSubCond = 17,
+    USubCond = 17,
 
     /// `USUB_SAT`
-    UsSubSat = 18,
+    USubSat = 18,
 }
 
 /// Unary Opcodes
