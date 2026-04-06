@@ -237,6 +237,18 @@ impl<'cursor, 'input> RecordIter<'cursor, 'input> {
     }
 
     #[cfg_attr(debug_assertions, track_caller)]
+    pub fn u16(&mut self) -> Result<u16, Error> {
+        let val = self.u64()?;
+        match val.try_into() {
+            Ok(v) => Ok(v),
+            Err(_) => {
+                debug_assert!(false, "{val} overflows u16");
+                Err(Error::ValueOverflow)
+            }
+        }
+    }
+
+    #[cfg_attr(debug_assertions, track_caller)]
     pub fn u32(&mut self) -> Result<u32, Error> {
         let val = self.u64()?;
         match val.try_into() {
