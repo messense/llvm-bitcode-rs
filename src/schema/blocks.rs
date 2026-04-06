@@ -5,7 +5,7 @@ use num_enum::TryFromPrimitive;
 /// Block IDs
 ///
 /// The only top-level block types are MODULE, IDENTIFICATION, STRTAB and SYMTAB.
-#[derive(Hash, Eq, PartialEq, Debug, Clone, Copy, TryFromPrimitive)]
+#[derive(Debug, Copy, Clone, PartialEq, Hash, TryFromPrimitive)]
 #[repr(u8)]
 #[non_exhaustive]
 pub enum BlockId {
@@ -77,7 +77,7 @@ pub enum BlockId {
 }
 
 /// `OperandBundle` tag codes
-#[derive(Debug, Clone, Copy, TryFromPrimitive)]
+#[derive(Debug, Copy, Clone, PartialEq, TryFromPrimitive)]
 #[repr(u8)]
 #[non_exhaustive]
 pub enum OperandBundleTagCode {
@@ -88,7 +88,7 @@ pub enum OperandBundleTagCode {
 }
 
 /// Sync scope name codes
-#[derive(Debug, Clone, Copy, TryFromPrimitive)]
+#[derive(Debug, Copy, Clone, PartialEq, TryFromPrimitive)]
 #[repr(u8)]
 #[non_exhaustive]
 pub enum SyncScopeNameCode {
@@ -97,7 +97,7 @@ pub enum SyncScopeNameCode {
 }
 
 /// STRTAB block codes
-#[derive(Debug, Clone, Copy, TryFromPrimitive)]
+#[derive(Debug, Copy, Clone, PartialEq, TryFromPrimitive)]
 #[repr(u8)]
 #[non_exhaustive]
 pub enum StrtabCode {
@@ -106,7 +106,7 @@ pub enum StrtabCode {
 }
 
 /// SYMTAB block codes
-#[derive(Debug, Clone, Copy, TryFromPrimitive)]
+#[derive(Debug, Copy, Clone, PartialEq, TryFromPrimitive)]
 #[repr(u8)]
 #[non_exhaustive]
 pub enum SymtabCode {
@@ -115,7 +115,7 @@ pub enum SymtabCode {
 }
 
 /// `MODULE` blocks have a number of optional fields and subblocks.
-#[derive(Debug, Clone, Copy, TryFromPrimitive)]
+#[derive(Debug, Copy, Clone, PartialEq, TryFromPrimitive)]
 #[repr(u8)]
 #[non_exhaustive]
 pub enum ModuleCode {
@@ -212,7 +212,7 @@ pub enum ModuleCode {
 
 /// The summary section uses different codes in the per-module
 /// and combined index cases.
-#[derive(Debug, Clone, Copy, TryFromPrimitive)]
+#[derive(Debug, Copy, Clone, PartialEq, TryFromPrimitive)]
 #[repr(u8)]
 #[non_exhaustive]
 pub enum GlobalValueSummaryCode {
@@ -405,7 +405,7 @@ pub enum GlobalValueSummaryCode {
 }
 
 /// `METADATA` block codes
-#[derive(Debug, Clone, Copy, TryFromPrimitive)]
+#[derive(Debug, Copy, Clone, PartialEq, TryFromPrimitive)]
 #[repr(u8)]
 #[non_exhaustive]
 pub enum MetadataCode {
@@ -642,7 +642,7 @@ pub enum MetadataCode {
 }
 
 /// `USELISTBLOCK` encoded values for a value's use-list.
-#[derive(Debug, Clone, Copy, TryFromPrimitive)]
+#[derive(Debug, Copy, Clone, PartialEq, TryFromPrimitive)]
 #[repr(u8)]
 #[non_exhaustive]
 pub enum UselistCode {
@@ -659,7 +659,7 @@ pub enum UselistCode {
 
 /// Identification block contains a string that describes the producer details,
 /// and an epoch that defines the auto-upgrade capability.
-#[derive(Debug, Clone, Copy, TryFromPrimitive)]
+#[derive(Debug, Copy, Clone, PartialEq, TryFromPrimitive)]
 #[repr(u8)]
 #[non_exhaustive]
 pub enum IdentificationCode {
@@ -675,7 +675,7 @@ pub enum IdentificationCode {
 }
 
 /// `PARAMATTR` blocks have code for defining a parameter attribute set.
-#[derive(Debug, Clone, Copy, TryFromPrimitive)]
+#[derive(Debug, Copy, Clone, PartialEq, TryFromPrimitive)]
 #[repr(u8)]
 #[non_exhaustive]
 pub enum AttributeCode {
@@ -699,7 +699,7 @@ pub enum AttributeCode {
 }
 
 /// Value symbol table codes.
-#[derive(Debug, Clone, Copy, TryFromPrimitive)]
+#[derive(Debug, Copy, Clone, PartialEq, TryFromPrimitive)]
 #[repr(u8)]
 #[non_exhaustive]
 pub enum ValueSymtabCode {
@@ -729,7 +729,7 @@ pub enum ValueSymtabCode {
 }
 
 /// `TYPE` blocks have codes for each type primitive they use.
-#[derive(Debug, Clone, Copy, TryFromPrimitive)]
+#[derive(Debug, Copy, Clone, PartialEq, TryFromPrimitive)]
 #[repr(u8)]
 #[non_exhaustive]
 pub enum TypeCode {
@@ -845,7 +845,7 @@ pub enum TypeCode {
 
 /// The constants block (`CONSTANTS_BLOCK_ID` describes emission for each
 /// constant and maintains an implicit current type value.
-#[derive(PartialEq, Debug, Clone, Copy, TryFromPrimitive)]
+#[derive(Debug, Copy, Clone, PartialEq, TryFromPrimitive)]
 #[repr(u8)]
 #[non_exhaustive]
 pub enum ConstantsCodes {
@@ -1335,7 +1335,7 @@ pub enum FunctionCode {
 }
 
 /// The module path symbol table only has one code (`MST_CODE_ENTRY`).
-#[derive(Debug, Clone, Copy, TryFromPrimitive)]
+#[derive(Debug, Copy, Clone, PartialEq, TryFromPrimitive)]
 #[repr(u8)]
 #[non_exhaustive]
 pub enum ModulePathSymtabCode {
