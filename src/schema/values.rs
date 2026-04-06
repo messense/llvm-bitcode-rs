@@ -321,6 +321,18 @@ pub enum Linkage {
     LinkOnceOdr = 19,
 }
 
+impl Linkage {
+    /// `Private`/`Internal`/`LinkerPrivate`/`LinkerPrivateWeak`
+    #[allow(deprecated)]
+    #[must_use]
+    pub fn is_private(self) -> bool {
+        matches!(
+            self,
+            Self::Private | Self::Internal | Self::LinkerPrivate | Self::LinkerPrivateWeak
+        )
+    }
+}
+
 #[derive(Debug, TryFromPrimitive)]
 #[repr(u8)]
 pub enum DllStorageClass {
@@ -535,12 +547,6 @@ pub enum CallConv {
 
 /// call conv field in bitcode is often mixed with flags
 impl CallConv {
-    #[doc(hidden)]
-    #[deprecated]
-    pub fn from_flags(ccinfo_flags: u64) -> Result<Self, String> {
-        Self::from_call_flags(ccinfo_flags).ok_or_else(|| "out of range".into())
-    }
-
     /// Extract calling convention from CALL/CALLBR CCInfo flags.
     #[must_use]
     pub fn from_call_flags(ccinfo_flags: u64) -> Option<Self> {
