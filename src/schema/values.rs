@@ -674,40 +674,52 @@ pub enum UnaryOpcode {
     Fneg = 0,
 }
 
-/// Flags for serializing
-/// OverflowingBinaryOperator's SubclassOptionalData contents.
-#[derive(Debug, Clone, Copy, TryFromPrimitive)]
-#[repr(u8)]
-#[non_exhaustive]
-pub enum OverflowingBinaryOperatorOptionalFlags {
-    NoUnsignedWrap = 0,
-    NoSignedWrap = 1,
+bitflags::bitflags! {
+    #[derive(Debug, Copy, Clone, Default)]
+    pub struct InlineAsmFlags: u8 {
+        const SideEffect = 1 << 0;
+        const AlignStack = 1 << 1;
+        /// ATT unset, Intel when set
+        const AsmDialectIntel = 1 << 2;
+        /// May unwind
+        const Unwind = 1 << 3;
+    }
 }
 
-/// Flags for serializing
-/// TruncInstOptionalFlags's SubclassOptionalData contents.
-#[derive(Debug, Clone, Copy, TryFromPrimitive)]
-#[repr(u8)]
-#[non_exhaustive]
-pub enum TruncInstOptionalFlags {
-    NoUnsignedWrap = 0,
-    NoSignedWrap = 1,
+bitflags::bitflags! {
+    /// `OverflowingBinaryOperatorOptionalFlags`
+    #[derive(Debug, Copy, Clone, Default)]
+    pub struct OverflowFlags: u8 {
+        /// OBO_NO_UNSIGNED_WRAP = no unsigned wrap (nuw)
+        const NoUnsignedWrap = 1 << 0;
+        /// OBO_NO_SIGNED_WRAP = no signed wrap (nsw)
+        const NoSignedWrap = 1 << 1;
+    }
 }
 
-/// FastMath Flags
-/// This is a fixed layout derived from the bitcode emitted by LLVM 5.0
-/// intended to decouple the in-memory representation from the serialization.
-#[derive(Debug, Clone, Copy, TryFromPrimitive)]
-#[repr(u8)]
-pub enum FastMathMap {
-    UnsafeAlgebra = 1 << 0, // Legacy
-    NoNaNs = 1 << 1,
-    NoInfs = 1 << 2,
-    NoSignedZeros = 1 << 3,
-    AllowReciprocal = 1 << 4,
-    AllowContract = 1 << 5,
-    ApproxFunc = 1 << 6,
-    AllowReassoc = 1 << 7,
+pub type OverflowingBinaryOperatorOptionalFlags = OverflowFlags;
+pub type TruncInstOptionalFlags = OverflowFlags;
+
+bitflags::bitflags! {
+    #[derive(Debug, Copy, Clone, Default)]
+    pub struct FastMathFlags: u8 {
+        /// Legacy flag for all unsafe optimizations
+        const UnsafeAlgebra = 1 << 0;
+        /// Allow optimizations to assume arguments and results are not NaN
+        const NoNans = 1 << 1;
+        /// Allow optimizations to assume arguments and results are not +/-Inf
+        const NoInfs = 1 << 2;
+        /// Allow optimizations to ignore the sign of zero
+        const NoSignedZeros = 1 << 3;
+        /// Allow optimizations to use reciprocal approximations
+        const AllowReciprocal = 1 << 4;
+        /// Allow fusing multiply-add operations
+        const AllowContract = 1 << 5;
+        /// Allow approximations for math library functions
+        const ApproxFunc = 1 << 6;
+        /// Allow reordering of floating-point operations
+        const AllowReassoc = 1 << 7;
+    }
 }
 
 bitflags::bitflags! {
