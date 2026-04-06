@@ -556,7 +556,7 @@ impl CallConv {
 
 /// These are values used in the bitcode files to encode which
 /// binop a `CST_CODE_CE_BINOP` refers to.
-#[derive(Debug, TryFromPrimitive)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, TryFromPrimitive)]
 #[repr(u8)]
 pub enum BinOpcode {
     Add = 0,
@@ -574,6 +574,58 @@ pub enum BinOpcode {
     And = 10,
     Or = 11,
     Xor = 12,
+}
+
+/// Combines the opcode with its appropriate flags
+#[derive(Debug, Clone, Copy)]
+pub enum BinOpcodeFlags {
+    /// Addition with overflow flags (nuw, nsw)
+    Add(OverflowFlags),
+    /// Subtraction with overflow flags (nuw, nsw)
+    Sub(OverflowFlags),
+    /// Multiplication with overflow flags (nuw, nsw)
+    Mul(OverflowFlags),
+    /// Unsigned division with exact flag
+    UDiv { exact: bool },
+    /// Signed division with exact flag
+    SDiv { exact: bool },
+    /// Unsigned remainder
+    URem,
+    /// Signed remainder
+    SRem,
+    /// Shift left with overflow flags (nuw, nsw)
+    Shl(OverflowFlags),
+    /// Logical shift right with exact flag
+    LShr { exact: bool },
+    /// Arithmetic shift right with exact flag
+    AShr { exact: bool },
+    /// Bitwise and
+    And,
+    /// Bitwise or
+    Or,
+    /// Bitwise xor
+    Xor,
+}
+
+impl BinOpcode {
+    #[must_use]
+    pub fn with_flags(self, flags: u8) -> BinOpcodeFlags {
+        match self {
+            Self::Add => BinOpcodeFlags::Add(OverflowFlags::from_bits_truncate(flags)),
+            Self::Sub => BinOpcodeFlags::Sub(OverflowFlags::from_bits_truncate(flags)),
+            Self::Mul => BinOpcodeFlags::Mul(OverflowFlags::from_bits_truncate(flags)),
+            Self::UDiv => BinOpcodeFlags::UDiv { exact: flags != 0 },
+            Self::SDiv => BinOpcodeFlags::SDiv { exact: flags != 0 },
+            Self::URem => BinOpcodeFlags::URem,
+            Self::SRem => BinOpcodeFlags::SRem,
+            Self::Shl => BinOpcodeFlags::Shl(OverflowFlags::from_bits_truncate(flags)),
+            Self::LShr => BinOpcodeFlags::LShr { exact: flags != 0 },
+            Self::AShr => BinOpcodeFlags::AShr { exact: flags != 0 },
+            Self::And => BinOpcodeFlags::And,
+            Self::Or => BinOpcodeFlags::Or,
+            Self::Xor => BinOpcodeFlags::Xor,
+        }
+    }
 }
 
 /// Encoded `AtomicOrdering` values.
