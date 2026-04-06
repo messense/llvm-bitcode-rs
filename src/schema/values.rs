@@ -1,9 +1,11 @@
 //! From the LLVM Project, under the [Apache License v2.0 with LLVM Exceptions](https://llvm.org/LICENSE.txt)
 
-use num_enum::TryFromPrimitive;
+use num_enum::{TryFromPrimitive, TryFromPrimitiveError};
+use std::num::NonZero;
 
-#[derive(Debug, Copy, Clone, PartialEq, TryFromPrimitive)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, TryFromPrimitive)]
 #[repr(u8)]
+#[non_exhaustive]
 pub enum AttrKind {
     /// Alignment of parameter (5 bits) stored as log2 of alignment with +1 bias.
     /// 0 means unaligned (different from align(1)).
@@ -231,6 +233,8 @@ pub enum AttrKind {
     /// environment.
     DenormalFpEnv = 106,
     NoOutline = 107,
+    /// Flatten function by recursively inlining all calls.
+    Flatten = 108,
 
     /// llvm-bitcode-rs extension for storing string key/value attributes
     StringAttribute = !0,
@@ -238,7 +242,7 @@ pub enum AttrKind {
 
 /// These are values used in the bitcode files to encode which
 /// cast a `CST_CODE_CE_CAST` refers to.
-#[derive(Debug, TryFromPrimitive)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, TryFromPrimitive)]
 #[repr(u8)]
 pub enum CastOpcode {
     Trunc = 0,
@@ -257,7 +261,7 @@ pub enum CastOpcode {
 }
 
 /// These are bitcode-specific values, different from C++ enum
-#[derive(Debug, TryFromPrimitive)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, TryFromPrimitive)]
 #[repr(u8)]
 #[non_exhaustive]
 pub enum Linkage {
@@ -333,15 +337,16 @@ impl Linkage {
     }
 }
 
-#[derive(Debug, TryFromPrimitive)]
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, TryFromPrimitive)]
 #[repr(u8)]
 pub enum DllStorageClass {
+    #[default]
     Default = 0,
     Import = 1,
     Export = 2,
 }
 
-#[derive(Debug, TryFromPrimitive)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, TryFromPrimitive)]
 #[repr(u8)]
 #[non_exhaustive]
 pub enum CallConv {
@@ -638,7 +643,7 @@ impl BinOpcode {
 }
 
 /// Encoded `AtomicOrdering` values.
-#[derive(Debug, TryFromPrimitive, Default)]
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, TryFromPrimitive)]
 #[repr(u8)]
 pub enum AtomicOrdering {
     #[default]
@@ -653,9 +658,10 @@ pub enum AtomicOrdering {
 
 /// COMDATSELECTIONKIND enumerates the possible selection mechanisms for
 /// COMDAT sections.
-#[derive(Debug, Clone, Copy, TryFromPrimitive)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Default, TryFromPrimitive)]
 #[repr(u8)]
 pub enum ComdatSelectionKind {
+    #[default]
     Any = 1,
     ExactMatch = 2,
     Largest = 3,
@@ -664,7 +670,7 @@ pub enum ComdatSelectionKind {
 }
 
 /// Atomic read-modify-write operations
-#[derive(Debug, Clone, Copy, TryFromPrimitive)]
+#[derive(Debug, Copy, Clone, TryFromPrimitive)]
 #[repr(u8)]
 #[non_exhaustive]
 pub enum RmwOperation {
@@ -727,7 +733,7 @@ pub enum RmwOperation {
 }
 
 /// Unary Opcodes
-#[derive(Debug, Clone, Copy, TryFromPrimitive)]
+#[derive(Debug, Copy, Clone, TryFromPrimitive)]
 #[repr(u8)]
 #[non_exhaustive]
 pub enum UnaryOpcode {
@@ -807,5 +813,227 @@ bitflags::bitflags! {
         const NoTail = 1 << 16;
         /// Call has optional fast-math-flags
         const Fmf = 1 << 17;
+    }
+}
+/// `GlobalValue::VisibilityTypes`
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, TryFromPrimitive)]
+#[repr(u8)]
+pub enum Visibility {
+    /// The GV is visible
+    #[default]
+    Default = 0,
+    /// The GV is hidden
+    Hidden = 1,
+    /// The GV is protected
+    Protected = 2,
+}
+
+/// `GlobalValue::ThreadLocalMode`
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, TryFromPrimitive)]
+#[repr(u8)]
+pub enum ThreadLocalMode {
+    #[default]
+    NotThreadLocal = 0,
+    GeneralDynamic = 1,
+    LocalDynamic = 2,
+    InitialExec = 3,
+    LocalExec = 4,
+}
+
+/// `GlobalValue::UnnamedAddr`
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, TryFromPrimitive)]
+#[repr(u8)]
+pub enum UnnamedAddr {
+    /// The address of the global is significant
+    #[default]
+    None = 0,
+    /// The address of the global is not significant, but the global cannot be merged with other globals
+    Global = 1,
+    /// The address of the global is not significant, and the global can be merged with other globals
+    Local = 2,
+}
+
+/// `GlobalValue::PreemptionSpecifier`
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, TryFromPrimitive)]
+#[repr(u8)]
+pub enum PreemptionSpecifier {
+    /// The global may be replaced by a different definition at link time (interposable)
+    #[default]
+    DsoPreemptable = 0,
+    /// The global's definition is local to the DSO and cannot be replaced at link time
+    DsoLocal = 1,
+}
+
+bitflags::bitflags! {
+    /// Floating-point comparison predicates
+    ///
+    /// `CmpInst::Predicate` in `InstrTypes.h`
+    #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
+    pub struct FCmpPredicate: u8 {
+        const Equal = 1 << 0;
+        const Less = 1 << 1;
+        const Greater = 1 << 2;
+        /// At least one operand is NaN
+        const Unordered = 1 << 3;
+
+        /// Always false (always folded)
+        const FALSE = 0;
+        /// Ordered and equal
+        const OEQ = Self::Equal.bits();
+        /// Ordered and greater than
+        const OGT = Self::Greater.bits();
+        /// Ordered and greater than or equal
+        const OGE = Self::Greater.bits() | Self::Equal.bits();
+        /// Ordered and less than
+        const OLT = Self::Less.bits();
+        /// Ordered and less than or equal
+        const OLE = Self::Less.bits() | Self::Equal.bits();
+        /// Ordered and not equal
+        const ONE = Self::Less.bits() | Self::Greater.bits();
+        /// Ordered (no NaNs)
+        const ORD = Self::Less.bits() | Self::Greater.bits() | Self::Equal.bits();
+        /// Unordered (isnan(X) | isnan(Y))
+        const UNO = Self::Unordered.bits();
+        /// Unordered or equal
+        const UEQ = Self::Unordered.bits() | Self::Equal.bits();
+        /// Unordered or greater than
+        const UGT = Self::Unordered.bits() | Self::Greater.bits();
+        /// Unordered, greater than, or equal
+        const UGE = Self::Unordered.bits() | Self::Greater.bits() | Self::Equal.bits();
+        /// Unordered or less than
+        const ULT = Self::Unordered.bits() | Self::Less.bits();
+        /// Unordered, less than, or equal
+        const ULE = Self::Unordered.bits() | Self::Less.bits() | Self::Equal.bits();
+        /// Unordered or not equal
+        const UNE = Self::Unordered.bits() | Self::Less.bits() | Self::Greater.bits();
+        /// Always true (always folded)
+        const TRUE = Self::Unordered.bits() | Self::Less.bits() | Self::Greater.bits() | Self::Equal.bits();
+    }
+}
+
+/// `CmpInst::Predicate` in `InstrTypes.h`
+#[derive(Debug, Copy, Clone, Eq, PartialEq, TryFromPrimitive)]
+#[repr(u8)]
+pub enum ICmpPredicate {
+    /// Equal
+    Eq = 32,
+    /// Not equal
+    Ne = 33,
+    /// Unsigned greater than
+    Ugt = 34,
+    /// Unsigned greater or equal
+    Uge = 35,
+    /// Unsigned less than
+    Ult = 36,
+    /// Unsigned less or equal
+    Ule = 37,
+    /// Signed greater than
+    Sgt = 38,
+    /// Signed greater or equal
+    Sge = 39,
+    /// Signed less than
+    Slt = 40,
+    /// Signed less or equal
+    Sle = 41,
+}
+
+impl ICmpPredicate {
+    #[must_use]
+    pub fn is_unsigned(self) -> bool {
+        matches!(self, Self::Ugt | Self::Uge | Self::Ult | Self::Ule)
+    }
+
+    #[must_use]
+    pub fn is_signed(self) -> bool {
+        matches!(self, Self::Sgt | Self::Sge | Self::Slt | Self::Sle)
+    }
+}
+
+/// Comparison predicate that can be either floating-point or integer
+///
+/// `CmpInst::Predicate` in `InstrTypes.h`
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum CmpPredicate {
+    FCmp(FCmpPredicate),
+    ICmp(ICmpPredicate),
+}
+
+impl CmpPredicate {
+    #[must_use]
+    pub fn as_fp(self) -> Option<FCmpPredicate> {
+        match self {
+            Self::FCmp(p) => Some(p),
+            Self::ICmp(_) => None,
+        }
+    }
+
+    #[must_use]
+    pub fn as_int(self) -> Option<ICmpPredicate> {
+        match self {
+            Self::FCmp(_) => None,
+            Self::ICmp(p) => Some(p),
+        }
+    }
+}
+
+impl TryFrom<u8> for CmpPredicate {
+    type Error = TryFromPrimitiveError<ICmpPredicate>;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        if value <= 15 {
+            Ok(Self::FCmp(FCmpPredicate::from_bits_truncate(value)))
+        } else {
+            ICmpPredicate::try_from_primitive(value).map(Self::ICmp)
+        }
+    }
+}
+
+/// `DICompileUnit::DebugEmissionKind`
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, TryFromPrimitive)]
+#[repr(u8)]
+pub enum DebugEmissionKind {
+    #[default]
+    NoDebug = 0,
+    FullDebug = 1,
+    LineTablesOnly = 2,
+    DebugDirectivesOnly = 3,
+}
+
+/// `DICompileUnit::DebugNameTableKind`
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, TryFromPrimitive)]
+#[repr(u8)]
+pub enum DebugNameTableKind {
+    /// Default name table
+    #[default]
+    Default = 0,
+    /// GNU name table
+    Gnu = 1,
+    /// No name table
+    None = 2,
+    /// Apple name table
+    Apple = 3,
+}
+
+/// LLVM bitcode encodes alignment as `log2(alignment) + 1`
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
+#[repr(transparent)]
+pub struct Alignment(NonZero<u8>);
+
+impl Alignment {
+    /// From the bitcode-encoded value
+    #[must_use]
+    pub fn from_encoded(encoded: u8) -> Option<Self> {
+        NonZero::new(encoded).map(Self)
+    }
+
+    #[must_use]
+    pub fn ilog2(self) -> u8 {
+        self.0.get() - 1
+    }
+
+    /// Alignment in bytes
+    #[must_use]
+    pub fn bytes(self) -> usize {
+        1usize << self.ilog2()
     }
 }
