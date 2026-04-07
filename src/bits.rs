@@ -51,21 +51,35 @@ impl<'input> Cursor<'input> {
         Ok(res)
     }
 
-    fn read_bits(&self, count: u8) -> Option<u64> {
-        let upper_bound = self.offset + count as usize;
-        let top_byte_index = upper_bound >> 3;
-        let mut res = 0;
-        if upper_bound & 7 != 0 {
-            let mask = (1u8 << (upper_bound & 7) as u8) - 1;
-            res = u64::from(*self.buffer.get(top_byte_index)? & mask);
+    #[inline]
+    fn read_bits(&self, bits: u8) -> Option<u64> {
+        if bits == 0 || bits > 64 {
+            return None;
         }
-        for i in ((self.offset >> 3)..(upper_bound >> 3)).rev() {
-            res <<= 8;
-            res |= u64::from(*self.buffer.get(i)?);
+
+        let byte_start = self.offset >> 3;
+        let shift = (self.offset & 7) as u8;
+
+        let extra_len = shift + (bits & 7);
+        let byte_len = usize::from(extra_len.div_ceil(8) + (bits >> 3));
+
+        let bytes = self.buffer.get(byte_start..byte_start + byte_len)?;
+        let accumulate = byte_len.min(8);
+        let mut res = 0u64;
+        for (i, &b) in bytes.get(..accumulate)?.iter().enumerate().take(accumulate) {
+            res |= (b as u64) << (i << 3);
         }
-        if self.offset & 7 != 0 {
-            res >>= self.offset as u64 & 7;
+
+        res >>= shift;
+
+        if let Some(&extra_byte) = bytes.get(8) {
+            res |= u64::from(extra_byte) << (64 - shift);
         }
+
+        if bits < 64 {
+            res &= (1 << bits) - 1;
+        }
+
         Some(res)
     }
 
