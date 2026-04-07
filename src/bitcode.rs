@@ -1,6 +1,5 @@
 use crate::bits::Cursor;
-use crate::bitstream::{Abbreviation, Operand};
-use crate::bitstream::{PayloadOperand, ScalarOperand};
+use crate::bitstream::{Abbreviation, Operand, PayloadOperand, ScalarOperand};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
@@ -277,14 +276,28 @@ impl<'cursor, 'input> RecordIter<'cursor, 'input> {
     }
 
     #[cfg_attr(debug_assertions, track_caller)]
+    #[inline]
     pub fn try_from<U: TryFrom<u64>, T: TryFrom<U>>(&mut self) -> Result<T, Error> {
-        let val = self.u64()?;
-        match val.try_into().ok().and_then(|v| T::try_from(v).ok()) {
-            Some(val) => Ok(val),
-            None => {
-                debug_assert!(false, "{val} overflows {}", std::any::type_name::<U>());
-                Err(Error::ValueOverflow)
+        self.try_next_from::<U, T>()?.ok_or(Error::EndOfRecord)
+    }
+
+    #[cfg_attr(debug_assertions, track_caller)]
+    pub fn try_next_from<U: TryFrom<u64>, T: TryFrom<U>>(&mut self) -> Result<Option<T>, Error> {
+        match self.try_next()? {
+            Some(val) => {
+                if let Some(val) = val.try_into().ok().and_then(|v| T::try_from(v).ok()) {
+                    Ok(Some(val))
+                } else {
+                    debug_assert!(
+                        false,
+                        "{} can't be made from {val} as {}",
+                        std::any::type_name::<T>(),
+                        std::any::type_name::<U>()
+                    );
+                    Err(Error::ValueOverflow)
+                }
             }
+            None => Ok(None),
         }
     }
 
@@ -304,11 +317,14 @@ impl<'cursor, 'input> RecordIter<'cursor, 'input> {
         }
     }
 
+    /// Reads `start` and `len` into Rust's `start..end`
     pub fn range(&mut self) -> Result<Range<usize>, Error> {
         let start = self.u64()? as usize;
         Ok(Range {
             start,
-            end: start + self.u64()? as usize,
+            end: start
+                .checked_add(self.u64()? as usize)
+                .ok_or(Error::ValueOverflow)?,
         })
     }
 
