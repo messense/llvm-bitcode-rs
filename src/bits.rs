@@ -46,7 +46,7 @@ impl<'input> Cursor<'input> {
         if bits < 1 || bits > 64 {
             return Err(Error::VbrOverflow);
         }
-        let res = self.peek(bits)?;
+        let res = self.read_bits(bits).ok_or(Error::BufferOverflow)?;
         self.offset += bits as usize;
         Ok(res)
     }
@@ -111,6 +111,19 @@ impl<'input> Cursor<'input> {
     /// The number may be up to 64-bit long regardless of the `width`.
     #[inline]
     pub fn read_vbr(&mut self, width: u8) -> Result<u64, Error> {
+        match width {
+            6 => self.read_vbr_fixed::<6>(),
+            8 => self.read_vbr_fixed::<8>(),
+            _ => self.read_vbr_inline(width),
+        }
+    }
+
+    pub(crate) fn read_vbr_fixed<const WIDTH: u8>(&mut self) -> Result<u64, Error> {
+        self.read_vbr_inline(WIDTH)
+    }
+
+    #[inline(always)]
+    pub(crate) fn read_vbr_inline(&mut self, width: u8) -> Result<u64, Error> {
         if width < 1 || width > 32 {
             // This is `MaxChunkSize` in LLVM
             return Err(Error::VbrOverflow);
@@ -188,6 +201,16 @@ impl fmt::Debug for Cursor<'_> {
 }
 
 #[test]
+fn test_all_bits() {
+    for i in 1..=64 {
+        let mut c = Cursor::new(&[!0; 17]);
+        let _ = c.read(i).unwrap();
+        assert_eq!(!0, c.read(64).unwrap());
+        assert_eq!(1, c.read(1).unwrap());
+    }
+}
+
+#[test]
 fn test_cursor_bits() {
     let mut c = Cursor::new(&[0b1000_0000]);
     assert_eq!(0, c.peek(1).unwrap());
@@ -249,6 +272,56 @@ fn test_cursor_bits() {
     assert_eq!(1, d.read(2).unwrap());
     assert!(d.align32().is_err());
     assert!(d.read(1).is_err());
+}
+
+#[test]
+fn test_read_bits_edge_cases() {
+    let data = [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00];
+    let mut c = Cursor::new(&data);
+    c.read(1).unwrap();
+    c.peek(64).unwrap();
+    let pattern_data = [0xAA; 10];
+    let c = Cursor::new(&pattern_data);
+    for offset in 0..8 {
+        for bits in 1..=64 {
+            let mut c_test = c.clone();
+            if offset > 0 {
+                c_test.read(offset).unwrap();
+            }
+            c_test.peek(bits).unwrap();
+        }
+    }
+
+    let test_data = [0xFF; 10];
+    let mut c = Cursor::new(&test_data);
+    c.read(7).unwrap();
+    let result = c.peek(64).unwrap();
+    assert_eq!(result, 0xFFFFFFFFFFFFFFFF);
+
+    let mut c = Cursor::new(&[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A]);
+    assert_eq!(c.peek(8).unwrap(), 0x01);
+    c.read(8).unwrap();
+    assert_eq!(c.peek(8).unwrap(), 0x02);
+    c.read(4).unwrap();
+    assert_eq!(c.peek(8).unwrap(), 0x30);
+
+    let data = [0xFF; 10];
+    let c = Cursor::new(&data);
+    let mut c_test = c.clone();
+    c_test.read(7).unwrap();
+    c_test.peek(58).unwrap();
+    let mut c_test2 = c.clone();
+    c_test2.read(1).unwrap();
+    c_test2.peek(64).unwrap();
+    for offset in 0..8 {
+        for bits in 1..=64 {
+            let mut c_aligned = c.clone();
+            if offset > 0 {
+                c_aligned.read(offset).unwrap();
+            }
+            c_aligned.peek(bits).unwrap();
+        }
+    }
 }
 
 #[test]

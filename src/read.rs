@@ -164,19 +164,21 @@ impl BitStreamReader {
 
         let is_literal = cursor.read(1)?;
         if is_literal == 1 {
-            return Ok(Operand::Scalar(ScalarOperand::Literal(cursor.read_vbr(8)?)));
+            return Ok(Operand::Scalar(ScalarOperand::Literal(
+                cursor.read_vbr_fixed::<8>()?,
+            )));
         }
         let op_type = cursor.read(3)?;
         Ok(match op_type {
             1 => {
-                let width = cursor.read_vbr(5)?;
+                let width = cursor.read_vbr_fixed::<5>()?;
                 if width < 1 || width > 32 {
                     return Err(Error::AbbrevWidthTooSmall(width as u8));
                 }
                 Operand::Scalar(ScalarOperand::Fixed(width as u8))
             }
             2 => {
-                let width = cursor.read_vbr(5)?;
+                let width = cursor.read_vbr_fixed::<5>()?;
                 if width < 1 || width > 32 {
                     return Err(Error::AbbrevWidthTooSmall(width as u8));
                 }
@@ -201,7 +203,7 @@ impl BitStreamReader {
         cursor: &mut Cursor<'_>,
         abbrevs: &mut Vec<Arc<Abbreviation>>,
     ) -> Result<(), Error> {
-        let mut num_ops = cursor.read_vbr(5)? as usize;
+        let mut num_ops = cursor.read_vbr_fixed::<5>()? as usize;
 
         let mut fields = Vec::with_capacity(num_ops);
         let mut payload = None;
@@ -344,8 +346,8 @@ impl<'global_state, 'input> BlockIter<'global_state, 'input> {
                     Ok(None)
                 }
                 EnterSubBlock => {
-                    let block_id = self.cursor.read_vbr(8)? as u32;
-                    let new_abbrev_width = self.cursor.read_vbr(4)? as u8;
+                    let block_id = self.cursor.read_vbr_fixed::<8>()? as u32;
+                    let new_abbrev_width = self.cursor.read_vbr_fixed::<4>()? as u8;
                     self.cursor.align32()?;
                     let block_length = self.cursor.read(32)? as usize * 4;
                     let mut cursor = self.cursor.take_slice(block_length)?;

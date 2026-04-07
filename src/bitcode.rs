@@ -135,8 +135,8 @@ impl<'cursor, 'input> RecordIter<'cursor, 'input> {
     }
 
     pub(crate) fn from_cursor(cursor: &'cursor mut Cursor<'input>) -> Result<Self, Error> {
-        let id = cursor.read_vbr(6)?;
-        let num_ops = cursor.read_vbr(6)? as usize;
+        let id = cursor.read_vbr_fixed::<6>()?;
+        let num_ops = cursor.read_vbr_fixed::<6>()? as usize;
         Ok(Self {
             id,
             cursor,
@@ -203,7 +203,7 @@ impl<'cursor, 'input> RecordIter<'cursor, 'input> {
                     return Ok(None);
                 }
                 *num_ops -= 1;
-                Ok(Some(self.cursor.read_vbr(6)?))
+                Ok(Some(self.cursor.read_vbr_fixed::<6>()?))
             }
         }
     }
@@ -332,7 +332,7 @@ impl<'cursor, 'input> RecordIter<'cursor, 'input> {
         match &mut self.ops {
             Ops::Abbrev { state, abbrev } => match Self::take_payload_operand(state, abbrev)? {
                 Some(PayloadOperand::Blob) => {
-                    let length = self.cursor.read_vbr(6)? as usize;
+                    let length = self.cursor.read_vbr_fixed::<6>()? as usize;
                     self.cursor.align32()?;
                     let data = self.cursor.read_bytes(length)?;
                     self.cursor.align32()?;
@@ -348,7 +348,7 @@ impl<'cursor, 'input> RecordIter<'cursor, 'input> {
         match &mut self.ops {
             Ops::Abbrev { state, abbrev } => match Self::take_payload_operand(state, abbrev)? {
                 Some(PayloadOperand::Array(op)) => {
-                    let len = self.cursor.read_vbr(6)? as usize;
+                    let len = self.cursor.read_vbr_fixed::<6>()? as usize;
                     let mut out = Vec::with_capacity(len);
                     for _ in 0..len {
                         if out.len() == out.capacity() {
@@ -371,7 +371,7 @@ impl<'cursor, 'input> RecordIter<'cursor, 'input> {
                         debug_assert!(false);
                         break;
                     }
-                    out.push(self.cursor.read_vbr(6)?);
+                    out.push(self.cursor.read_vbr_fixed::<6>()?);
                 }
                 Ok(out)
             }
@@ -413,7 +413,7 @@ impl<'cursor, 'input> RecordIter<'cursor, 'input> {
             Ops::Abbrev { state, abbrev } => match Self::take_payload_operand(state, abbrev)? {
                 Some(PayloadOperand::Array(el)) => {
                     *state += 1;
-                    let len = self.cursor.read_vbr(6)? as usize;
+                    let len = self.cursor.read_vbr_fixed::<6>()? as usize;
                     let mut out = Vec::with_capacity(len);
 
                     match el {
@@ -455,7 +455,7 @@ impl<'cursor, 'input> RecordIter<'cursor, 'input> {
                 let len = std::mem::replace(num_ops, 0);
                 let mut out = Vec::with_capacity(len);
                 for _ in 0..len {
-                    let ch = self.cursor.read_vbr(6)?;
+                    let ch = self.cursor.read_vbr_fixed::<6>()?;
                     out.push(match u8::try_from(ch) {
                         Ok(c) => c,
                         Err(_) => {
