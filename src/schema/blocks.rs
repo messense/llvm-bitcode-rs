@@ -208,6 +208,16 @@ pub enum ModuleCode {
     ///
     /// [ifunc value type, addrspace, resolver val#, linkage, visibility]
     Ifunc = 18,
+
+    /// `ASM_PROPERTY`
+    ///
+    /// [strchr x N]
+    AsmProperty = 19,
+
+    /// `GUIDLIST`
+    ///
+    /// [n x i64]
+    GuidList = 20,
 }
 
 /// The summary section uses different codes in the per-module

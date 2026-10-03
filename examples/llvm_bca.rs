@@ -157,6 +157,8 @@ fn record_tag_name(block: u32, record: u32) -> &'static str {
             ModuleCodes::MODULE_CODE_SOURCE_FILENAME => "SOURCE_FILENAME",
             ModuleCodes::MODULE_CODE_HASH => "HASH",
             ModuleCodes::MODULE_CODE_ALIAS_OLD | ModuleCodes::MODULE_CODE_IFUNC => todo!(),
+            ModuleCodes::MODULE_CODE_ASM_PROPERTY => "ASM_PROPERTY",
+            ModuleCodes::MODULE_CODE_GUIDLIST => "GUIDLIST",
         },
         Blocks::IDENTIFICATION_BLOCK_ID => match IdentificationCodes::try_from(record).unwrap() {
             IdentificationCodes::IDENTIFICATION_CODE_STRING => "STRING",
@@ -518,6 +520,12 @@ enum ModuleCodes {
 
     // IFUNC: [ifunc value type, addrspace, resolver val#, linkage, visibility]
     MODULE_CODE_IFUNC = 18,
+
+    // ASM_PROPERTY: [strchr x N]
+    MODULE_CODE_ASM_PROPERTY = 19,
+
+    // GUIDLIST: [n x i64]
+    MODULE_CODE_GUIDLIST = 20,
 }
 
 /// PARAMATTR blocks have code for defining a parameter attribute set.
