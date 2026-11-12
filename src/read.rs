@@ -23,6 +23,7 @@ pub enum Error {
     NoSuchAbbrev { block_id: u32, abbrev_id: u32 },
     UnexpectedBlock(u32),
     MissingEndBlock(u32),
+    // TODO for the next semver-major: it actually means "too large"
     AbbrevWidthTooSmall(u8),
     ReadBits(bits::Error),
     Encoding(FromUtf8Error),
@@ -154,6 +155,19 @@ impl BitStreamReader {
         Ok(())
     }
 
+    /// Decode a width-carrying scalar operand (`fixed(N)` or `vbr(N)`).
+    ///
+    /// LLVM encodes `fixed(0)` and `vbr(0)` as a literal zero
+    fn width_operand(width: u64, make: fn(u8) -> ScalarOperand) -> Result<Operand, Error> {
+        if width > 0 && width <= 32 {
+            Ok(Operand::Scalar(make(width as u8)))
+        } else if width == 0 {
+            Ok(Operand::Scalar(ScalarOperand::Literal(0)))
+        } else {
+            Err(Error::AbbrevWidthTooSmall(width as u8))
+        }
+    }
+
     /// Read abbreviated operand
     #[inline(never)]
     fn read_abbrev_op(cursor: &mut Cursor<'_>, num_ops_left: &mut usize) -> Result<Operand, Error> {
@@ -170,20 +184,8 @@ impl BitStreamReader {
         }
         let op_type = cursor.read(3)?;
         Ok(match op_type {
-            1 => {
-                let width = cursor.read_vbr_fixed::<5>()?;
-                if width < 1 || width > 32 {
-                    return Err(Error::AbbrevWidthTooSmall(width as u8));
-                }
-                Operand::Scalar(ScalarOperand::Fixed(width as u8))
-            }
-            2 => {
-                let width = cursor.read_vbr_fixed::<5>()?;
-                if width < 1 || width > 32 {
-                    return Err(Error::AbbrevWidthTooSmall(width as u8));
-                }
-                Operand::Scalar(ScalarOperand::Vbr(width as u8))
-            }
+            1 => Self::width_operand(cursor.read_vbr_fixed::<5>()?, ScalarOperand::Fixed)?,
+            2 => Self::width_operand(cursor.read_vbr_fixed::<5>()?, ScalarOperand::Vbr)?,
             3 if *num_ops_left == 1 => {
                 let op = Self::read_abbrev_op(cursor, num_ops_left)?;
                 if let Operand::Scalar(op) = op {
